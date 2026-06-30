@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: FastAPI Backend",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "backend.main:app",
+        "--reload",
+        "--port",
+        "8000"
+      ],
+      "jinja": true,
+      "console": "integratedTerminal",
+      "python": "${command:python.interpreterPath}"
+    },
+    {
+      "name": "Launch Angular Frontend (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:4200",
+      "webRoot": "${workspaceFolder}/frontend"
+    }
+  ]
+}
