@@ -1,9 +1,9 @@
 {
   "name": "frontend",
   "version": "0.0.0",
-  "scripts": {
+   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "npx serve -s dist/frontend/browser -l $PORT",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
