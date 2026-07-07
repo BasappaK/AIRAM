@@ -6,9 +6,16 @@ import { Observable } from 'rxjs';
   providedIn: 'root'
 })
 export class ApiService {
-  private baseUrl = 'http://localhost:8000';
-
+  
+private baseUrl = window.location.hostname === 'localhost'
+    ? 'http://localhost:8000'
+    : 'https://aaram.onrender.com';
+  
   constructor(private http: HttpClient) {}
+
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
 
   // Guidelines Endpoints
   uploadGuideline(name: string, file: File): Observable<any> {
@@ -27,16 +34,44 @@ export class ApiService {
     return this.http.get(`${this.baseUrl}/api/rag/metrics`);
   }
 
-  searchRag(query: string, limit: number = 5): Observable<any[]> {
+  searchRag(query: string, limit: number = 5, collectionName: string = 'aaram_guidelines'): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/api/rag/search`, {
-      params: { query, limit: limit.toString() }
+      params: { 
+        query, 
+        limit: limit.toString(),
+        collection_name: collectionName
+      }
     });
   }
 
-  trainRAG(file: File): Observable<any> {
+  getRagCollections(): Observable<string[]> {
+    return this.http.get<string[]>(`${this.baseUrl}/api/rag/collections`);
+  }
+
+  inspectPdf(file: File): Observable<{ pages: number }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<{ pages: number }>(`${this.baseUrl}/api/rag/inspect-pdf`, formData);
+  }
+
+  trainRAG(
+    file: File, 
+    collectionName: string = 'aaram_guidelines', 
+    collectionMode: string = 'create',
+    startPage?: number,
+    endPage?: number
+  ): Observable<any> {
     return new Observable(subscriber => {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('collection_name', collectionName);
+      formData.append('collection_mode', collectionMode);
+      if (startPage !== undefined && startPage !== null) {
+        formData.append('start_page', startPage.toString());
+      }
+      if (endPage !== undefined && endPage !== null) {
+        formData.append('end_page', endPage.toString());
+      }
 
       fetch(`${this.baseUrl}/api/rag/train`, {
         method: 'POST',
@@ -90,7 +125,9 @@ export class ApiService {
     useRag: boolean,
     modelName: string,
     swe1File?: File,
-    swe2File?: File
+    swe2File?: File,
+    correctQuality: boolean = false,
+    correctTrace: boolean = false
   ): Observable<any> {
     const formData = new FormData();
     formData.append('run_type', runType);
@@ -99,6 +136,8 @@ export class ApiService {
     }
     formData.append('use_rag', useRag ? 'true' : 'false');
     formData.append('model_name', modelName);
+    formData.append('correct_quality', correctQuality ? 'true' : 'false');
+    formData.append('correct_trace', correctTrace ? 'true' : 'false');
     
     if (swe1File) {
       formData.append('swe1_file', swe1File);
@@ -140,5 +179,9 @@ export class ApiService {
     const formData = new FormData();
     formData.append('minimized', minimized ? 'true' : 'false');
     return this.http.post(`${this.baseUrl}/api/analysis/${runId}/minimize`, formData);
+  }
+
+  deleteRun(runId: string): Observable<any> {
+    return this.http.delete(`${this.baseUrl}/api/analysis/${runId}`);
   }
 }

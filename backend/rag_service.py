@@ -1,137 +1,105 @@
 import os
 import sys
-
-# Ensure parent directory is in python path for absolute imports if executed directly
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import time
-import json
 import uuid
-import numpy as np
-from openai import OpenAI
-from backend.database import save_chunk_log, get_chunking_metrics
+import json
+import time
 
-# Environment variables
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
-QDRANT_URL = os.getenv("QDRANT_URL", "")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
+from Model.llm import LLMManager
+from RagEngine.rag_engine import RAGEngine
+from backend.database import save_chunk_log, get_chunking_metrics, clear_chunks_for_doc
 
-# Initialize Nvidia client if key is present
-nv_client = None
-if NVIDIA_API_KEY:
-    nv_client = OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=NVIDIA_API_KEY
-    )
+# Initialize global LLMManager and RAGEngine
+llm_manager = LLMManager()
+rag_engine = RAGEngine(llm_manager=llm_manager)
 
-# Qdrant client fallback setup
-qdrant_client = None
-in_memory_db = [] # Fallback in-memory vector store: list of {"id": str, "vector": list, "payload": dict}
-
-if QDRANT_URL:
-    try:
-        from qdrant_client import QdrantClient
-        from qdrant_client.models import Distance, VectorParams
-        
-        q_client_args = {"url": QDRANT_URL}
-        if QDRANT_API_KEY:
-            q_client_args["api_key"] = QDRANT_API_KEY
-        qdrant_client = QdrantClient(**q_client_args)
-        
-        # Ensure collection exists
-        qdrant_client.recreate_collection(
-            collection_name="requalitrace_guidelines",
-            vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
-        )
-    except Exception as e:
-        print(f"Failed to initialize QdrantClient (falling back to in-memory): {e}")
-        qdrant_client = None
-
-def get_embedding(text: str) -> list:
-    """Generate embedding vector using Nvidia NIM, with a fallback to random vector."""
-    if nv_client:
-        try:
-            response = nv_client.embeddings.create(
-                input=[text],
-                model="nvidia/embeddings-nv-embed-qa-4"
-            )
-            return response.data[0].embedding
-        except Exception as e:
-            print(f"Nvidia embedding API failed, using fallback: {e}")
-            
-    # Mock embedding of size 1024 (hash-based for deterministic query matches in mock tests)
-    h = hash(text)
-    np.random.seed(abs(h) % 2**32)
-    return np.random.uniform(-0.1, 0.1, 1024).tolist()
-
-def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list:
-    """Splits text into chunks of chunk_size characters with overlap."""
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        chunks.append(text[start:end])
-        if end == len(text):
-            break
-        start += (chunk_size - overlap)
-    return chunks
-
-def extract_text_from_file(file_content: bytes, filename: str) -> str:
-    """Extracts raw text content from uploaded bytes depending on file type."""
-    if filename.endswith(".json"):
-        try:
-            data = json.loads(file_content.decode("utf-8"))
-            return json.dumps(data, indent=2)
-        except:
-            return file_content.decode("utf-8", errors="ignore")
-    else:
-        return file_content.decode("utf-8", errors="ignore")
-
-def train_document_stream(file_content: bytes, filename: str):
+def train_document_stream(
+    file_content: bytes, 
+    filename: str, 
+    collection_name: str = "aaram_guidelines",
+    collection_mode: str = "create",
+    start_page: int = None,
+    end_page: int = None
+):
     """
-    Ingests and chunks a guideline document, saves progress to SQLite and Qdrant in real-time,
+    Ingests and chunks a guideline document using RAGEngine, saves progress to SQLite and Qdrant in real-time,
     and yields progressive state notifications for SSE stream.
     """
-    text = extract_text_from_file(file_content, filename)
-    chunks = chunk_text(text)
-    total_chunks = len(chunks)
+    # 1. Clear database entries for this document to avoid duplicate chunks
+    clear_chunks_for_doc(filename)
+    
+    # 2. Setup the collection
+    recreate = collection_mode == "create"
+    rag_engine.setup_collection(collection_name, recreate=recreate)
+    
+    # 3. Process the file using RAGEngine (Excel, CSV, text, PDF)
+    # Temporarily isolate newly processed documents
+    prev_docs = list(rag_engine.documents)
+    prev_vecs = list(rag_engine.vectors)
+    rag_engine.documents = []
+    rag_engine.vectors = []
+    
+    try:
+        rag_engine.process_file(
+            filename, 
+            file_content, 
+            collection_name=collection_name,
+            start_page=start_page,
+            end_page=end_page
+        )
+        new_docs = list(rag_engine.documents)
+    finally:
+        # Restore previous documents and merge
+        rag_engine.documents = prev_docs + rag_engine.documents
+        rag_engine.vectors = prev_vecs + rag_engine.vectors
+        
+    total_chunks = len(new_docs)
     
     yield {"status": "started", "total_chunks": total_chunks, "processed": 0}
     
-    for idx, chunk in enumerate(chunks):
-        # 1. Generate Embedding
-        vector = get_embedding(chunk)
-        token_count = len(chunk.split()) * 2 # Crude token approximation
-        qdrant_id = str(uuid.uuid4())
+    for idx, doc in enumerate(new_docs):
+        # Generate Embedding using LLMManager via RAGEngine's _safe_get_embedding
+        vector = rag_engine._safe_get_embedding(doc["text"])
+        token_count = len(doc["text"].split()) * 2 # Crude token approximation
         
-        # 2. Save to SQLite database immediately
-        save_chunk_log(filename, idx, chunk, token_count, qdrant_id)
+        # Save to SQLite database
+        save_chunk_log(filename, idx, doc["text"], token_count, doc["id"])
         
-        # 3. Save to Vector Store (Qdrant or In-Memory)
+        # Save to Vector Store (Qdrant or In-Memory)
         payload = {
-            "doc_name": filename,
-            "chunk_index": idx,
-            "text": chunk
+            "title": doc.get("title", "Untitled"),
+            "text": doc["text"],
+            "source": doc.get("source", filename),
+            "collection": collection_name,
+            "metadata": doc.get("metadata", {})
         }
         
-        if qdrant_client:
+        if rag_engine.qdrant_client:
             try:
                 from qdrant_client.models import PointStruct
-                qdrant_client.upsert(
-                    collection_name="requalitrace_guidelines",
-                    points=[PointStruct(id=qdrant_id, vector=vector, payload=payload)]
+                rag_engine.qdrant_client.upsert(
+                    collection_name=collection_name,
+                    points=[PointStruct(id=doc["id"], vector=vector, payload=payload)]
                 )
             except Exception as e:
                 print(f"Qdrant upload failed for chunk {idx}: {e}")
+                
+        # Find index in total list to update vector alignment
+        existing_idx = None
+        for i, d in enumerate(rag_engine.documents):
+            if d.get("id") == doc["id"]:
+                existing_idx = i
+                break
+                
+        if existing_idx is not None:
+            if existing_idx < len(rag_engine.vectors):
+                rag_engine.vectors[existing_idx] = vector
+            else:
+                rag_engine.vectors.append(vector)
         else:
-            in_memory_db.append({
-                "id": qdrant_id,
-                "vector": vector,
-                "payload": payload
-            })
+            rag_engine.documents.append(doc)
+            rag_engine.vectors.append(vector)
             
-        # Simulate processing time slightly to make progress visual
-        time.sleep(0.1)
+        time.sleep(0.05) # Yield slightly for UI visual progress
         
         yield {
             "status": "processing",
@@ -139,7 +107,7 @@ def train_document_stream(file_content: bytes, filename: str):
             "processed": idx + 1,
             "chunk": {
                 "index": idx,
-                "text": chunk[:150] + "...",
+                "text": doc["text"][:150] + "...",
                 "tokens": token_count
             }
         }
@@ -147,47 +115,18 @@ def train_document_stream(file_content: bytes, filename: str):
     metrics = get_chunking_metrics()
     yield {"status": "completed", "total_chunks": total_chunks, "metrics": metrics}
 
-def search_guideline_chunks(query: str, limit: int = 5) -> list:
-    """Searches the vector database for relevant guideline chunks using cosine similarity."""
-    query_vector = get_embedding(query)
-    
-    if qdrant_client:
-        try:
-            results = qdrant_client.search(
-                collection_name="requalitrace_guidelines",
-                query_vector=query_vector,
-                limit=limit
-            )
-            return [
-                {
-                    "text": hit.payload["text"],
-                    "doc_name": hit.payload["doc_name"],
-                    "score": hit.score
-                }
-                for hit in results
-            ]
-        except Exception as e:
-            print(f"Qdrant search failed, falling back: {e}")
-            
-    # Fallback cosine similarity search on in-memory store
-    matches = []
-    qv = np.array(query_vector)
-    qv_norm = np.linalg.norm(qv)
-    
-    for item in in_memory_db:
-        iv = np.array(item["vector"])
-        iv_norm = np.linalg.norm(iv)
-        if qv_norm > 0 and iv_norm > 0:
-            score = np.dot(qv, iv) / (qv_norm * iv_norm)
-        else:
-            score = 0.0
-            
-        matches.append({
-            "text": item["payload"]["text"],
-            "doc_name": item["payload"]["doc_name"],
-            "score": float(score)
-        })
-        
-    # Sort matches by score descending
-    matches.sort(key=lambda x: x["score"], reverse=True)
-    return matches[:limit]
+def search_guideline_chunks(query: str, limit: int = 5, collection_name: str = "aaram_guidelines") -> list:
+    """Searches the vector database for relevant guideline chunks using RAGEngine."""
+    try:
+        results = rag_engine.search(query, collection_name=collection_name, top_k=limit)
+        return [
+            {
+                "text": r["payload"]["text"],
+                "doc_name": r["payload"].get("source", ""),
+                "score": r["score"]
+            }
+            for r in results
+        ]
+    except Exception as e:
+        print(f"Search chunks failed: {e}")
+        return []

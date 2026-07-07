@@ -1,9 +1,9 @@
 {
-  "name": "frontend",
+  "name": "aaram-frontend",
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "node start.js",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
@@ -26,5 +26,8 @@
     "@angular/compiler-cli": "^22.0.0",
     "prettier": "^3.8.1",
     "typescript": "~6.0.2"
+  },
+  "engines": {
+    "node": ">=24.15.0 <25.0.0"
   }
 }

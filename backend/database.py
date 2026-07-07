@@ -2,7 +2,17 @@ import os
 import sqlite3
 import json
 
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requalitrace.db")
+DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aaram.db")
+OLD_DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requalitrace.db")
+
+# Automatically migrate database if old one exists
+if not os.path.exists(DATABASE_PATH) and os.path.exists(OLD_DATABASE_PATH):
+    try:
+        import shutil
+        shutil.copy2(OLD_DATABASE_PATH, DATABASE_PATH)
+        print(f"[database] Migrated old database to {DATABASE_PATH}")
+    except Exception as e:
+        print(f"[database] Failed to migrate database: {e}")
 
 def get_connection():
     conn = sqlite3.connect(DATABASE_PATH)
@@ -93,6 +103,20 @@ def get_guideline_content(guideline_id: str):
     conn.close()
     return json.loads(row["content"]) if row else None
 
+def get_guideline_details(guideline_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, content FROM guidelines WHERE id = ?", (guideline_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "content": json.loads(row["content"])
+        }
+    return None
+
 def save_chunk_log(doc_name: str, chunk_index: int, text: str, tokens: int, qdrant_id: str):
     conn = get_connection()
     cursor = conn.cursor()
@@ -100,6 +124,13 @@ def save_chunk_log(doc_name: str, chunk_index: int, text: str, tokens: int, qdra
         "INSERT INTO chunks (doc_name, chunk_index, chunk_text, token_count, qdrant_id) VALUES (?, ?, ?, ?, ?)",
         (doc_name, chunk_index, text, tokens, qdrant_id)
     )
+    conn.commit()
+    conn.close()
+
+def clear_chunks_for_doc(doc_name: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM chunks WHERE doc_name = ?", (doc_name,))
     conn.commit()
     conn.close()
 
@@ -170,7 +201,14 @@ def get_previous_executions(limit: int = 10):
     """)
     rows = cursor.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    
+    results = []
+    for r in rows:
+        row_dict = dict(r)
+        if "timestamp" in row_dict and row_dict["timestamp"]:
+            row_dict["timestamp"] = row_dict["timestamp"].replace(" ", "T") + "Z"
+        results.append(row_dict)
+    return results
 
 def get_execution_results(run_id: str):
     conn = get_connection()
@@ -179,6 +217,14 @@ def get_execution_results(run_id: str):
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def delete_execution_run(run_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM execution_results WHERE run_id = ?", (run_id,))
+    cursor.execute("DELETE FROM execution_runs WHERE run_id = ?", (run_id,))
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     init_db()

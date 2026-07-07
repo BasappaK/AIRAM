@@ -1,6 +1,17 @@
+import os
+import sys
 import io
 import json
 import asyncio
+
+# Configure python path for imports
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(backend_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+if backend_dir not in sys.path:
+    sys.path.append(backend_dir)
+
 from backend.database import init_db, get_chunking_metrics
 from backend.rag_service import train_document_stream, search_guideline_chunks
 from backend.analyzer_service import run_requirements_analysis_job, ACTIVE_JOBS
@@ -67,7 +78,7 @@ async def run_tests():
             swe2_filename="swe2_reqs.csv",
             guideline_id=None,
             use_rag=False,
-            model_name="meta/llama-3.1-70b-instruct"
+            model_name="nvidia/llama-3.3-nemotron-super-49b-v1.5"
         )
     )
     

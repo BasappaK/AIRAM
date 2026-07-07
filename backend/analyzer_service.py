@@ -1,9 +1,5 @@
 import os
 import sys
-
-# Ensure parent directory is in python path for absolute imports if executed directly
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import csv
 import json
 import uuid
@@ -11,62 +7,97 @@ import time
 import zipfile
 import asyncio
 import xml.etree.ElementTree as ET
-from openai import OpenAI
+
+from Model.llm import LLMManager
+from Model.requirement import Requirement
+from Analysis.quality_analyser import analyze_single_requirement, correct_single_requirement
+import Analysis.quality_analyser as qa_mod
 from backend.database import (
     save_execution_run,
     update_execution_status,
     save_execution_result,
-    get_guideline_content
+    get_guideline_content,
+    get_guideline_details
 )
-from backend.rag_service import search_guideline_chunks
-
-# Environment variables
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
-nv_client = None
-if NVIDIA_API_KEY:
-    nv_client = OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=NVIDIA_API_KEY
-    )
+from backend.rag_service import rag_engine
 
 # Active execution state tracker
 ACTIVE_JOBS = {}  # run_id -> { "status": "running" | "paused" | "stopped", "current_row": int, "total_rows": int }
 
+def find_best_header(headers: list, target_list: list) -> str:
+    # Try to find exact matches first
+    for target in target_list:
+        for h in headers:
+            if h.lower().strip() == target:
+                return h
+    # Substring matching, ignoring obvious incorrect overlap
+    for target in target_list:
+        for h in headers:
+            h_lower = h.lower().strip()
+            if target in h_lower:
+                # Avoid matching 'fault id' for requirement 'id'
+                if target == "id" and "fault" in h_lower:
+                    continue
+                return h
+    return None
+
 def read_csv_file(file_content: bytes) -> list:
-    """Parses csv bytes into list of dictionaries."""
+    """Parses csv bytes into list of dictionaries with header safety mapping."""
     text = file_content.decode("utf-8", errors="ignore").splitlines()
     reader = csv.DictReader(text)
-    # Normalize headers
+    headers = reader.fieldnames if reader.fieldnames else []
+    
+    # Clean headers
+    headers = [h.strip() for h in headers if h]
+    
+    id_header = find_best_header(headers, ["id", "req_id", "requirement_id", "req id", "requirement id", "name"])
+    text_header = find_best_header(headers, ["content", "requirement", "text", "description", "req_text", "req text", "requirement text", "desc"])
+    
+    # Fallbacks if not found
+    if not id_header and headers:
+        for h in headers:
+            h_lower = h.lower()
+            if "id" in h_lower and "fault" not in h_lower:
+                id_header = h
+                break
+        if not id_header:
+            id_header = headers[0]
+            
+    if not text_header and headers:
+        for h in headers:
+            h_lower = h.lower()
+            if any(x in h_lower for x in ["req", "text", "content", "desc"]):
+                text_header = h
+                break
+        if not text_header:
+            for h in headers:
+                if h != id_header:
+                    text_header = h
+                    break
+
     rows = []
     for row in reader:
-        normalized_row = {}
+        if not any(row.values()):
+            continue
+        req_id = row.get(id_header, "").strip() if id_header and row.get(id_header) else f"REQ-{len(rows)+1}"
+        req_text = row.get(text_header, "").strip() if text_header and row.get(text_header) else ""
+        
+        normalized_row = {
+            "id": req_id,
+            "text": req_text
+        }
+        
         for k, v in row.items():
-            if not k:
-                continue
-            k_lower = k.lower().strip()
-            if "id" in k_lower:
-                normalized_row["id"] = v.strip()
-            elif "req" in k_lower or "text" in k_lower or "desc" in k_lower:
-                normalized_row["text"] = v.strip()
-            else:
-                normalized_row[k] = v.strip()
-        
-        # Ensure we have id and text
-        if "id" not in normalized_row:
-            normalized_row["id"] = f"REQ-{len(rows)+1}"
-        if "text" not in normalized_row and len(row) > 0:
-            # Fallback to the first non-id column
-            for col_val in row.values():
-                if col_val != normalized_row.get("id"):
-                    normalized_row["text"] = col_val
-                    break
-        
-        if "text" in normalized_row:
-            rows.append(normalized_row)
+            if k and v:
+                k_clean = k.strip()
+                if k_clean != id_header and k_clean != text_header:
+                    normalized_row[k_clean] = v.strip()
+                    
+        rows.append(normalized_row)
     return rows
 
 def read_xlsx_file(file_content: bytes) -> list:
-    """Parses .xlsx sheet rows using Python standard libraries (zipfile & xml) to avoid external dependencies."""
+    """Parses .xlsx sheet rows using Python standard libraries (zipfile & xml) with header safety mapping."""
     import tempfile
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         tmp.write(file_content)
@@ -115,29 +146,63 @@ def read_xlsx_file(file_content: bytes) -> list:
             if raw_rows:
                 # Use first row as headers
                 header_row = raw_rows[0]
-                headers = {col: val.lower().strip() for col, val in header_row.items() if val}
+                headers = {col: val.strip() for col, val in header_row.items() if val}
+                header_names = list(headers.values())
+                
+                id_header = find_best_header(header_names, ["id", "req_id", "requirement_id", "req id", "requirement id", "name"])
+                text_header = find_best_header(header_names, ["content", "requirement", "text", "description", "req_text", "req text", "requirement text", "desc"])
+                
+                # Fallback mapping if not found
+                if not id_header and header_names:
+                    for h in header_names:
+                        if "id" in h.lower() and "fault" not in h.lower():
+                            id_header = h
+                            break
+                    if not id_header:
+                        id_header = header_names[0]
+                        
+                if not text_header and header_names:
+                    for h in header_names:
+                        if any(x in h.lower() for x in ["req", "text", "content", "desc"]):
+                            text_header = h
+                            break
+                    if not text_header:
+                        for h in header_names:
+                            if h != id_header:
+                                text_header = h
+                                break
+                                
+                # Map column letters to normalized key names
+                col_mapping = {}
+                for col, name in headers.items():
+                    if name == id_header:
+                        col_mapping[col] = "id"
+                    elif name == text_header:
+                        col_mapping[col] = "text"
+                    else:
+                        col_mapping[col] = name
                 
                 for r in raw_rows[1:]:
+                    if not any(r.values()):
+                        continue
                     normalized_row = {}
                     for col, val in r.items():
-                        if col not in headers:
+                        if col not in col_mapping:
                             continue
-                        h_name = headers[col]
-                        if "id" in h_name:
-                            normalized_row["id"] = val
-                        elif "req" in h_name or "text" in h_name or "desc" in h_name:
-                            normalized_row["text"] = val
-                        else:
-                            normalized_row[h_name] = val
+                        key = col_mapping[col]
+                        normalized_row[key] = val.strip() if val else ""
                     
-                    if "id" not in normalized_row:
+                    if "id" not in normalized_row or not normalized_row["id"]:
                         normalized_row["id"] = f"REQ-{len(rows)+1}"
                     if "text" not in normalized_row:
-                        # Fallback to first available value
-                        for val in r.values():
-                            if val != normalized_row.get("id"):
-                                normalized_row["text"] = val
-                                break
+                        normalized_row["text"] = ""
+                        
+                    # Copy remaining metadata
+                    for col, val in r.items():
+                        if col in headers:
+                            name = headers[col]
+                            if name != id_header and name != text_header and val:
+                                normalized_row[name] = val.strip()
                                 
                     if "text" in normalized_row:
                         rows.append(normalized_row)
@@ -153,124 +218,127 @@ def parse_requirements_file(file_content: bytes, filename: str) -> list:
         return read_xlsx_file(file_content)
     return []
 
-def evaluate_requirement_heuristics(req_text: str, rules_context: str = "") -> dict:
-    """Fallback local analyzer for INCOSE and ASPICE guidelines using simple heuristics."""
-    req_lower = req_text.lower()
+def evaluate_traceability_heuristics(req_text: str, swe1_reqs: list) -> dict:
+    """Fallback local analyzer for requirement traceability based on keyword match heuristics."""
+    matched_id = None
+    for hlr in swe1_reqs:
+        hlr_words = set(hlr.content.lower().split())
+        llr_words = set(req_text.lower().split())
+        common = hlr_words.intersection(llr_words)
+        if len(common) > 2: # heuristic keyword overlap
+            matched_id = hlr.name
+            break
     
-    # Heuristic 1: Missing modal verbs (shall, should, will)
-    if "shall" not in req_lower and "should" not in req_lower and "will" not in req_lower:
+    if matched_id:
+        return {
+            "status": "PASS",
+            "swe1_id": matched_id,
+            "rationale": f"Traces successfully to High Level Requirement {matched_id} due to keyword match.",
+            "corrected_req": req_text
+        }
+    else:
         return {
             "status": "FAIL",
-            "failed_rule": "INCOSE-RL-01 (Modal Verbs)",
-            "rationale": "Requirement does not contain any of the mandatory modal verbs ('shall', 'should', 'must').",
-            "corrected_req": f"The system shall {req_text[0].lower() + req_text[1:] if len(req_text) > 1 else req_text}"
+            "swe1_id": None,
+            "rationale": "No tracing high-level requirement (SWE.1) found matching this detailed low-level requirement (SWE.2).",
+            "corrected_req": req_text + " [Traced to: HLR-XXX]"
         }
+
+def analyze_traceability_with_llm(r: Requirement, swe1_reqs: list, llm: LLMManager) -> dict:
+    """Calls Nvidia NIM API to analyze requirements traceability between SWE.1 and SWE.2."""
+    if not llm.client.api_key:
+        return evaluate_traceability_heuristics(r.content, swe1_reqs)
         
-    # Heuristic 2: Vagueness (fast, cheap, clean, user-friendly, robust)
-    vague_words = ["fast", "cheap", "clean", "user-friendly", "robust", "efficient", "appropriate"]
-    for w in vague_words:
-        if w in req_lower:
-            return {
-                "status": "REVIEW",
-                "failed_rule": "INCOSE-RL-02 (Vagueness)",
-                "rationale": f"Requirement contains vague/non-verifiable word '{w}'. Quantify the requirement parameters.",
-                "corrected_req": req_text.replace(w, f"{w} (specify quantified metric)")
-            }
-            
-    # Heuristic 3: Multiple requirements combined (and, also, as well as)
-    if " and " in req_lower and len(req_text) > 120:
-        return {
-            "status": "REVIEW",
-            "failed_rule": "INCOSE-RL-03 (Singularity)",
-            "rationale": "Requirement contains 'and' in a long sentence, suggesting multiple requirements are combined.",
-            "corrected_req": req_text.split(" and ")[0] + "."
-        }
-        
-    return {
-        "status": "PASS",
-        "failed_rule": None,
-        "rationale": "Requirement follows base grammar, contains modal verb, and has no vagueness.",
-        "corrected_req": req_text
-    }
-
-async def analyze_with_llm(req_text: str, rules_context: str, model_name: str, mode: str, swe1_requirements: list = None) -> dict:
-    """Calls Nvidia NIM API to analyze requirements or fallback to heuristics if not configured."""
-    if not nv_client:
-        # Traceability mock simulation
-        if mode == "traceability" and swe1_requirements:
-            # Let's see if we can find a matching HLR ID
-            # If the requirement text contains or references a similar keyword, map it.
-            matched_id = None
-            for hlr in swe1_requirements:
-                hlr_words = set(hlr["text"].lower().split())
-                llr_words = set(req_text.lower().split())
-                common = hlr_words.intersection(llr_words)
-                if len(common) > 2: # heuristic keyword overlap
-                    matched_id = hlr["id"]
-                    break
-            
-            if matched_id:
-                return {
-                    "status": "PASS",
-                    "swe1_id": matched_id,
-                    "rationale": f"Traces successfully to High Level Requirement {matched_id} due to keyword match.",
-                    "corrected_req": req_text
-                }
-            else:
-                return {
-                    "status": "FAIL",
-                    "swe1_id": None,
-                    "rationale": "No tracing high-level requirement (SWE.1) found matching this detailed low-level requirement (SWE.2).",
-                    "corrected_req": req_text + " [Traced to: HLR-XXX]"
-                }
-                
-        return evaluate_requirement_heuristics(req_text, rules_context)
-
-    # Prepare LLM prompts
-    if mode == "traceability" and swe1_requirements:
-        hlr_list_str = "\n".join([f"- {hlr['id']}: {hlr['text']}" for hlr in swe1_requirements[:50]]) # Limit to prevent context blowup
-        system_prompt = (
-            "You are an automotive safety and systems engineer. Evaluate if the following Low-Level Software Requirement (SWE.2) "
-            "properly traces to and satisfies one of the High-Level Requirements (SWE.1) listed below. "
-            "Respond ONLY in a structured JSON format containing the following fields:\n"
-            "{\n"
-            '  "status": "PASS" | "FAIL" | "REVIEW",\n'
-            '  "swe1_id": "The matching SWE.1 ID (e.g. REQ-1) or null if none match",\n'
-            '  "rationale": "Reason why it traces or does not trace",\n'
-            '  "corrected_req": "Proposed rewrite of SWE.2 if trace correction is needed, or the original req if fine"\n'
-            "}"
-        )
-        user_content = f"SWE.1 Requirements:\n{hlr_list_str}\n\nSWE.2 Requirement:\n{req_text}"
-    else:
-        system_prompt = (
-            "You are an expert automotive systems validator. Analyze the input requirement against the INCOSE/ASPICE guidelines "
-            "provided in the context. Determine if it passes, fails, or needs review. "
-            "Respond ONLY in a structured JSON format containing the following fields:\n"
-            "{\n"
-            '  "status": "PASS" | "FAIL" | "REVIEW",\n'
-            '  "failed_rule": "The name or ID of the guideline rule violated (or null)",\n'
-            '  "rationale": "Detailed explanation of why it failed or passed",\n'
-            '  "corrected_req": "Proposed correction of the requirement violating the guidelines"\n'
-            "}"
-        )
-        user_content = f"Guidelines Context:\n{rules_context}\n\nRequirement:\n{req_text}"
-
+    hlr_list_str = "\n".join([f"- {hlr.name}: {hlr.content}" for hlr in swe1_reqs[:50]]) # Limit to prevent context blowup
+    system_prompt = (
+        "You are an automotive safety and systems engineer. Evaluate if the following Low-Level Software Requirement (SWE.2) "
+        "properly traces to and satisfies one of the High-Level Requirements (SWE.1) listed below. "
+        "Respond ONLY in a structured JSON format containing the following fields:\n"
+        "{\n"
+        '  "status": "PASS" | "FAIL" | "REVIEW",\n'
+        '  "swe1_id": "The matching SWE.1 ID (e.g. REQ-1) or null if none match",\n'
+        '  "rationale": "Reason why it traces or does not trace",\n'
+        '  "corrected_req": "Proposed rewrite of SWE.2 if trace correction is needed, or the original req if fine"\n'
+        "}"
+    )
+    user_content = f"SWE.1 Requirements:\n{hlr_list_str}\n\nSWE.2 Requirement:\n{r.content}"
+    
     try:
-        # Call Nvidia NIM
-        completion = nv_client.chat.completions.create(
-            model=model_name or "meta/llama-3.1-70b-instruct",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        res_text = completion.choices[0].message.content
-        return json.loads(res_text)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ]
+        response = llm.get_response(messages, stream=False, model=getattr(llm, "analysis_model_name", "nvidia/llama-3.3-nemotron-super-49b-v1.5"))
+        from Analysis.quality_analyser import clean_and_parse_json
+        res_data = clean_and_parse_json(response.choices[0].message.content)
+        # Normalize status to uppercase matching DB constraint
+        status_raw = res_data.get("status", "REVIEW").upper()
+        return {
+            "status": "PASS" if status_raw in ["PASS", "PASSED"] else ("REVIEW" if status_raw == "REVIEW" else "FAIL"),
+            "swe1_id": res_data.get("swe1_id"),
+            "rationale": res_data.get("rationale", "No rationale provided by LLM."),
+            "corrected_req": res_data.get("corrected_req", r.content)
+        }
     except Exception as e:
-        print(f"Nvidia NIM API call failed: {e}")
-        return evaluate_requirement_heuristics(req_text, rules_context)
+        print(f"Nvidia NIM API traceability call failed: {e}")
+        return evaluate_traceability_heuristics(r.content, swe1_reqs)
+
+def analyze_quality(
+    idx: int,
+    r: Requirement,
+    llm: LLMManager,
+    rag,
+    rules_context: str,
+    is_strict_json: bool,
+    correct_quality: bool = False
+) -> dict:
+    """Performs compliance check using POC auditor and performs automated rewrite correction if violation found and requested."""
+    # 1. Run POC quality auditor
+    _, res = analyze_single_requirement(
+        index=idx,
+        r=r,
+        llm=llm,
+        rag=rag,
+        rag_context=rules_context,
+        selected_collections="aaram_guidelines",
+        is_strict_json=is_strict_json
+    )
+    
+    poc_status = res.get("Status", "Review")
+    if poc_status.upper() in ["PASSED", "PASS"]:
+        db_status = "PASS"
+        corrected_req = r.content
+    else:
+        db_status = "REVIEW"
+        if correct_quality:
+            # Extract rule violation info to feed back into POC correction logic
+            failed_rules_list = res.get("Failed Rules", [])
+            failed_rule_str = ", ".join(failed_rules_list) if isinstance(failed_rules_list, list) else str(failed_rules_list)
+            
+            # 2. Run POC correction logic
+            _, _, _, corrected_req, _ = correct_single_requirement(
+                index=idx,
+                r=r,
+                llm=llm,
+                rag=rag,
+                rag_context=rules_context,
+                selected_collections="aaram_guidelines",
+                feedback_rule=failed_rule_str,
+                feedback_rationale=res.get("Rationale")
+            )
+        else:
+            corrected_req = None
+        
+    failed_rules_list = res.get("Failed Rules", [])
+    failed_rule_str = ", ".join(failed_rules_list) if isinstance(failed_rules_list, list) else str(failed_rules_list)
+    
+    return {
+        "status": db_status,
+        "failed_rule": failed_rule_str if failed_rule_str and failed_rule_str != "None" else None,
+        "rationale": res.get("Rationale", "No explanation provided."),
+        "corrected_req": corrected_req,
+        "swe1_id": None
+    }
 
 async def run_requirements_analysis_job(
     run_id: str,
@@ -281,7 +349,9 @@ async def run_requirements_analysis_job(
     swe2_filename: str = None,
     guideline_id: str = None,
     use_rag: bool = False,
-    model_name: str = "meta/llama-3.1-70b-instruct"
+    model_name: str = "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    correct_quality: bool = False,
+    correct_trace: bool = False
 ):
     """Executes the analysis process row-by-row supporting Pause, Resume, Stop operations."""
     save_execution_run(run_id, run_type, "running")
@@ -291,13 +361,35 @@ async def run_requirements_analysis_job(
         "total_rows": 0
     }
     
+    # Initialize LLMManager using passed model
+    llm_manager = LLMManager(model_name=model_name, analysis_model_name=model_name)
+    
     # 1. Parse requirement sets
-    swe1_reqs = parse_requirements_file(swe1_content, swe1_filename) if swe1_content else []
-    swe2_reqs = parse_requirements_file(swe2_content, swe2_filename) if swe2_content else []
+    swe1_reqs_raw = parse_requirements_file(swe1_content, swe1_filename) if swe1_content else []
+    swe2_reqs_raw = parse_requirements_file(swe2_content, swe2_filename) if swe2_content else []
+    
+    # Convert lists to Requirement objects compatible with POC analyzer
+    swe1_reqs = []
+    for idx, item in enumerate(swe1_reqs_raw):
+        swe1_reqs.append(Requirement(
+            name=item.get("id", f"REQ-{idx+1}"),
+            content=item.get("text", ""),
+            state=item.get("state", item.get("State", "")),
+            asil=item.get("asil", item.get("ASIL", "")),
+            rationale=item.get("rationale", item.get("Rationale", ""))
+        ))
+        
+    swe2_reqs = []
+    for idx, item in enumerate(swe2_reqs_raw):
+        swe2_reqs.append(Requirement(
+            name=item.get("id", f"REQ-{idx+1}"),
+            content=item.get("text", ""),
+            state=item.get("state", item.get("State", "")),
+            asil=item.get("asil", item.get("ASIL", "")),
+            rationale=item.get("rationale", item.get("Rationale", ""))
+        ))
     
     # Determine what we are analyzing
-    # If traceability: swe2_reqs is analyzed, mapped against swe1_reqs
-    # If quality/correction: we analyze whatever is uploaded (swe1 if only swe1, swe2 if only swe2, or both)
     analysis_items = []
     mode = "quality"
     
@@ -305,29 +397,38 @@ async def run_requirements_analysis_job(
         analysis_items = swe2_reqs
         mode = "traceability"
     else:
+        # For quality or combined analysis, process all requirements
         analysis_items = swe1_reqs + swe2_reqs
         mode = "quality"
         
     total_rows = len(analysis_items)
     ACTIVE_JOBS[run_id]["total_rows"] = total_rows
     
-    # 2. Get rules context if strict guidelines file upload is selected
-    strict_guidelines_content = ""
-    if guideline_id and not use_rag:
+    # 2. Inject strict guidelines content globally if strict guidelines mode is chosen
+    is_strict_json = (guideline_id is not None and guideline_id.strip() != "" and not use_rag)
+    if is_strict_json:
         try:
-            content_json = get_guideline_content(guideline_id)
-            if content_json:
-                strict_guidelines_content = json.dumps(content_json, indent=2)
+            ids = [i.strip() for i in guideline_id.split(",") if i.strip()]
+            combined_rules = {}
+            for gid in ids:
+                g_details = get_guideline_details(gid)
+                if g_details:
+                    combined_rules[g_details["name"]] = g_details["content"]
+            qa_mod.CURRENT_RULES = combined_rules
         except Exception as e:
-            print(f"Failed to read guidelines {guideline_id}: {e}")
-            
+            print(f"Failed to load strict guidelines {guideline_id}: {e}")
+            qa_mod.CURRENT_RULES = None
+    else:
+        qa_mod.CURRENT_RULES = None
+        
     # Loop and analyze row-by-row
-    for idx, item in enumerate(analysis_items):
+    for idx, r in enumerate(analysis_items):
         # Handle Pause/Stop operations
         while True:
             job_state = ACTIVE_JOBS.get(run_id)
             if not job_state or job_state["status"] == "stopped":
                 update_execution_status(run_id, "stopped")
+                qa_mod.CURRENT_RULES = None
                 return
             if job_state["status"] == "paused":
                 await asyncio.sleep(0.5)
@@ -336,47 +437,50 @@ async def run_requirements_analysis_job(
             
         ACTIVE_JOBS[run_id]["current_row"] = idx + 1
         
-        req_id = item.get("id", f"REQ-{idx+1}")
-        req_text = item.get("text", "")
+        req_id = r.name
+        req_text = r.content
         
-        # Resolve rules context: either fetch from RAG similarity search, or use the strict guidelines context
-        rules_context = strict_guidelines_content
+        # Resolve rules context: fetch from RAG similarity search if enabled
+        rules_context = ""
         if use_rag and req_text:
             try:
-                chunks = search_guideline_chunks(req_text, limit=3)
-                rules_context = "\n\n".join([c["text"] for c in chunks])
+                # Query RAGEngine
+                rules_context = rag_engine.query(req_text, collection_name="aaram_guidelines", top_k=2)
             except Exception as e:
                 print(f"RAG rules search failed: {e}")
                 
-        # Analyze using LLM or local fallbacks
-        result = await analyze_with_llm(
-            req_text=req_text,
-            rules_context=rules_context,
-            model_name=model_name,
-            mode=mode,
-            swe1_requirements=swe1_reqs
-        )
-        
+        # Analyze using LLM or local fallbacks based on mode
+        if mode == "traceability":
+            # Call traceability analyzer
+            result = analyze_traceability_with_llm(r, swe1_reqs, llm_manager)
+            if not correct_trace:
+                result["corrected_req"] = None
+        else:
+            # Call quality auditor
+            result = analyze_quality(idx, r, llm_manager, rag_engine, rules_context, is_strict_json, correct_quality)
+            
         # Save results immediately
         status = result.get("status", "REVIEW").upper()
-        failed_rule = result.get("failed_rule") or result.get("swe1_id") if mode == "traceability" else result.get("failed_rule")
+        failed_rule = result.get("failed_rule")
         rationale = result.get("rationale", "No explanation provided.")
         corrected_req = result.get("corrected_req", req_text)
-        swe1_id = result.get("swe1_id") if mode == "traceability" else None
+        swe1_id = result.get("swe1_id")
         
         save_execution_result(
             run_id=run_id,
             req_id=req_id,
             input_req=req_text,
             status=status,
-            failed_rule=failed_rule,
+            failed_rule=failed_rule or swe1_id, # In traceability, failed_rule column can capture swe1_id or matching info
             rationale=rationale,
             corrected_req=corrected_req,
             swe1_id=swe1_id
         )
         
-        # Yield status via print/log or we'll wrap this in a stream generator in main.py
-        await asyncio.sleep(0.1) # Yield execution control
+        # Yield execution control to remain responsive
+        await asyncio.sleep(0.01)
         
     update_execution_status(run_id, "completed")
     ACTIVE_JOBS[run_id]["status"] = "completed"
+    # Reset rules state
+    qa_mod.CURRENT_RULES = None

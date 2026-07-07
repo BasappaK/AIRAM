@@ -287,3 +287,8 @@ tr:last-child td {
 tr:hover td {
   background-color: #f8f9fa;
 }
+
+/* Global utility for hiding elements (used with [hidden] binding in Angular) */
+[hidden] {
+  display: none !important;
+}

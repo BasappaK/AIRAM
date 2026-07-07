@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+openai
+numpy
+qdrant-client
+python-dotenv
+pandas
+openpyxl
+pymupdf
+pymupdf4llm
+python-multipart
+websockets

@@ -1,4 +1,4 @@
-import { Component, ViewChild } from '@angular/core';
+import { Component, ViewChild, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DashboardComponent } from './components/dashboard/dashboard';
@@ -21,76 +21,67 @@ import { ApiService } from './services/api.service';
     <header class="app-header">
       <div class="header-container">
         <div class="app-logo">
-          <span class="logo-icon">🚗</span>
-          <span class="logo-text">ReQualiTrace <span class="logo-sub">Studio</span></span>
+          <div class="logo-icon-container">
+            <svg class="logo-svg" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="8" fill="url(#logo-grad)" />
+              <path d="M10 22L16 10L22 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M11.5 18H20.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M23 7L23.5 8.5L25 9L23.5 9.5L23 11L22.5 9.5L21 9L22.5 8.5L23 7Z" fill="#FFFBEB" />
+              <defs>
+                <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#0d6efd"/>
+                  <stop offset="100%" stop-color="#00c9ff"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="logo-text-container">
+            <span class="logo-text-main">AARAM</span>
+            <span class="logo-text-sub">AI-Assisted Requirement Analysis & Management</span>
+          </div>
         </div>
         
-        <nav class="top-nav-tabs">
-          <button class="nav-tab" [class.active]="activeTab === 'dashboard'" (click)="setTab('dashboard')">
-            📊 Dashboard
-          </button>
-          <button class="nav-tab" [class.active]="activeTab === 'analysis'" (click)="setTab('analysis')">
-            🔍 Requirement Analysis
-          </button>
-          <button class="nav-tab" [class.active]="activeTab === 'rag'" (click)="setTab('rag')">
-            ⚙️ RAG Configuration
-          </button>
-          <button class="nav-tab" [class.active]="activeTab === 'settings'" (click)="setTab('settings')">
-            🔧 Standards Setup
-          </button>
-        </nav>
+        <div class="header-right">
+          <nav class="top-nav-tabs">
+            <button class="nav-tab" [class.active]="activeTab === 'dashboard'" (click)="setTab('dashboard')">
+              📊 Dashboard
+            </button>
+            <button class="nav-tab" [class.active]="activeTab === 'analysis'" (click)="setTab('analysis')">
+              🔍 Requirement Analysis
+            </button>
+            <button class="nav-tab" [class.active]="activeTab === 'rag'" (click)="setTab('rag')">
+              ⚙️ RAG Configuration
+            </button>
+          </nav>
+
+          <!-- Backend Connection Status Indicator -->
+          <div class="backend-status-badge" 
+               [class.connected]="backendStatus === 'connected'" 
+               [class.disconnected]="backendStatus === 'disconnected'" 
+               [class.connecting]="backendStatus === 'connecting'">
+            <span class="status-indicator-dot"></span>
+            <span class="status-text">Backend: {{ backendUrl }}</span>
+          </div>
+        </div>
       </div>
     </header>
 
     <!-- Main Workspace -->
     <main class="container">
       <app-dashboard 
-        *ngIf="activeTab === 'dashboard'"
+        [hidden]="activeTab !== 'dashboard'"
+        [active]="activeTab === 'dashboard'"
         (viewRun)="onViewHistoryRun($event)">
       </app-dashboard>
       
       <app-requirements 
         #requirementsComp
-        *ngIf="activeTab === 'analysis'">
+        [hidden]="activeTab !== 'analysis'">
       </app-requirements>
       
       <app-rag-config 
-        *ngIf="activeTab === 'rag'">
+        [hidden]="activeTab !== 'rag'">
       </app-rag-config>
-
-      <!-- Guidelines Upload Standards Setup Tab -->
-      <div *ngIf="activeTab === 'settings'" class="card" style="max-width: 600px; margin: 0 auto;">
-        <div class="card-title">🔧 Upload Automotive Standards Guidelines</div>
-        <p class="section-desc" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 20px;">
-          Configure strict standard documents in JSON format (e.g. INCOSE rules list, ASPICE guidelines) to enable validation.
-        </p>
-
-        <div class="form-group">
-          <label class="form-label">Standards Document Name (e.g. INCOSE Rules, ASPICE SWE.1)</label>
-          <input type="text" [(ngModel)]="newStandardName" placeholder="Enter name...">
-        </div>
-
-        <div class="form-group" style="margin-top: 16px;">
-          <label class="form-label">Upload JSON Guidelines File</label>
-          <div class="dropzone-mini" (click)="stdInput.click()" [class.has-file]="standardFile">
-            <span>📁</span>
-            <span>{{ standardFile ? standardFile.name : 'Choose JSON Guidelines File' }}</span>
-            <input #stdInput type="file" (change)="onStandardFileSelected($event)" style="display: none;" accept=".json">
-          </div>
-        </div>
-
-        <button 
-          class="btn btn-primary" 
-          [disabled]="!newStandardName || !standardFile || isUploadingStandard" 
-          (click)="uploadStandard()"
-          style="margin-top: 24px; width: 100%;">
-          {{ isUploadingStandard ? 'Uploading...' : 'Upload Standards Document' }}
-        </button>
-
-        <div *ngIf="uploadedStatus" class="alert alert-success" style="margin-top: 16px; padding: 12px; background: #e6f4ea; color: var(--color-success); border-radius: 6px; font-size: 0.85rem;">
-          {{ uploadedStatus }}
-        </div>
-      </div>
     </main>
   `,
   styles: [`
@@ -114,17 +105,40 @@ import { ApiService } from './services/api.service';
     .app-logo {
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-size: 1.25rem;
-      font-weight: 700;
+      gap: 12px;
+    }
+    .logo-icon-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-svg {
+      display: block;
+      filter: drop-shadow(0 2px 4px rgba(13, 110, 253, 0.25));
+      transition: transform 0.3s ease;
+    }
+    .app-logo:hover .logo-svg {
+      transform: scale(1.05) rotate(3deg);
+    }
+    .logo-text-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .logo-text-main {
+      font-size: 1.35rem;
+      font-weight: 800;
       color: var(--text-primary);
+      letter-spacing: 0.5px;
+      line-height: 1.1;
     }
-    .logo-icon {
-      font-size: 1.6rem;
-    }
-    .logo-sub {
-      color: var(--color-primary);
+    .logo-text-sub {
+      font-size: 0.62rem;
       font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.1px;
+      line-height: 1.1;
+      margin-top: 2px;
     }
     .top-nav-tabs {
       display: flex;
@@ -177,20 +191,113 @@ import { ApiService } from './services/api.service';
       color: var(--color-success);
       font-weight: 500;
     }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .backend-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid var(--border-color);
+      background-color: #f8f9fa;
+      color: var(--text-secondary);
+      user-select: none;
+      pointer-events: none;
+    }
+    .backend-status-badge.connected {
+      background-color: #e6f4ea;
+      color: var(--color-success);
+      border-color: #c4ebd0;
+    }
+    .backend-status-badge.disconnected {
+      background-color: #fce8e6;
+      color: var(--color-danger);
+      border-color: #f9d3cf;
+    }
+    .backend-status-badge.connecting {
+      background-color: #e8f0fe;
+      color: var(--color-primary);
+      border-color: #d2e3fc;
+    }
+    .status-indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #6c757d;
+      transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .connected .status-indicator-dot {
+      background-color: var(--color-success);
+      box-shadow: 0 0 6px var(--color-success);
+      animation: status-pulse 2s infinite;
+    }
+    .disconnected .status-indicator-dot {
+      background-color: var(--color-danger);
+      box-shadow: 0 0 6px var(--color-danger);
+    }
+    .connecting .status-indicator-dot {
+      background-color: var(--color-primary);
+      animation: status-pulse 1.5s infinite;
+    }
+    @keyframes status-pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
   `]
 })
-export class App {
+export class App implements OnInit {
   activeTab = 'dashboard';
   
-  // Standards upload bindings
-  newStandardName = '';
-  standardFile: File | null = null;
-  isUploadingStandard = false;
-  uploadedStatus = '';
+  backendStatus: 'connected' | 'connecting' | 'disconnected' = 'connecting';
+  backendUrl = '';
+
+
 
   @ViewChild('requirementsComp') requirementsComp?: RequirementsComponent;
 
   constructor(private apiService: ApiService) {}
+
+  private ws: WebSocket | null = null;
+
+  ngOnInit(): void {
+    this.backendUrl = this.apiService.getBaseUrl();
+    this.connectWebSocket();
+  }
+
+  connectWebSocket() {
+    this.backendStatus = 'connecting';
+    const wsUrl = this.backendUrl.replace(/^http/, 'ws') + '/api/ws/status';
+    
+    try {
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = () => {
+        this.backendStatus = 'connected';
+      };
+
+      this.ws.onclose = () => {
+        this.backendStatus = 'disconnected';
+        setTimeout(() => {
+          if (this.backendStatus === 'disconnected') {
+            this.connectWebSocket();
+          }
+        }, 3000);
+      };
+
+      this.ws.onerror = () => {
+        this.backendStatus = 'disconnected';
+      };
+    } catch (e) {
+      this.backendStatus = 'disconnected';
+    }
+  }
 
   setTab(tabName: string) {
     this.activeTab = tabName;
@@ -204,31 +311,5 @@ export class App {
         this.requirementsComp.loadResults(runId);
       }
     }, 100);
-  }
-
-  onStandardFileSelected(event: any) {
-    const file = event.target.files[0];
-    if (file) {
-      this.standardFile = file;
-    }
-  }
-
-  uploadStandard() {
-    if (!this.standardFile || !this.newStandardName) return;
-    this.isUploadingStandard = true;
-    this.uploadedStatus = '';
-
-    this.apiService.uploadGuideline(this.newStandardName, this.standardFile).subscribe({
-      next: (res) => {
-        this.isUploadingStandard = false;
-        this.uploadedStatus = `Successfully uploaded guideline '${res.name}'!`;
-        this.newStandardName = '';
-        this.standardFile = null;
-      },
-      error: (err) => {
-        this.isUploadingStandard = false;
-        alert('Failed to upload guidelines: ' + (err.error?.detail || err.message));
-      }
-    });
   }
 }

@@ -21,9 +21,17 @@ import { ApiService } from '../../services/api.service';
             <input #fileInput type="file" (change)="onFileSelected($event)" style="display: none;" accept=".json,.pdf,.txt">
           </div>
           
-          <div *ngIf="selectedFile" class="file-details">
-            Selected: <strong>{{ selectedFile.name }}</strong> ({{ (selectedFile.size / 1024) | number:'1.0-1' }} KB)
-            <button class="btn btn-primary btn-sm" [disabled]="isTraining" (click)="startIngestion()">Start Ingestion</button>
+          <!-- File selection details -->
+          <div *ngIf="selectedFile && !showConfigDialog" class="file-details" style="display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 12px;">
+            <div>Selected: <strong>{{ selectedFile.name }}</strong> ({{ (selectedFile.size / 1024) | number:'1.0-1' }} KB)</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+              Target Collection: <strong>{{ collectionMode === 'create' ? newCollectionName : selectedCollection }}</strong>
+              <span *ngIf="isPdf"> | Pages: <strong>{{ startPage }} to {{ endPage }}</strong></span>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 4px;">
+              <button class="btn btn-primary btn-sm" style="flex: 1;" [disabled]="isTraining" (click)="startIngestion()">Start Ingestion</button>
+              <button class="btn btn-secondary btn-sm" [disabled]="isTraining" (click)="showConfigDialog = true">Edit Config</button>
+            </div>
           </div>
 
           <!-- Progressive Training Log -->
@@ -38,7 +46,7 @@ import { ApiService } from '../../services/api.service';
             
             <div class="log-container">
               <div class="log-title">Progressive DB Upsert Logs:</div>
-              <div class="log-window" #logWindow>
+              <div class="log-window">
                 <div *ngFor="let log of logs" class="log-entry">
                   <span class="log-time">{{ log.time | date:'HH:mm:ss' }}</span>
                   <span class="log-msg">{{ log.message }}</span>
@@ -74,6 +82,13 @@ import { ApiService } from '../../services/api.service';
             <div class="card-title">🔍 Manual Retrieval Evaluation</div>
             <p class="section-desc">Search guidelines to check the semantic relevance and retrieval score from Qdrant.</p>
             
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label class="form-label">Target Collection to Search:</label>
+              <select [(ngModel)]="searchCollection" (change)="onSearchCollectionChanged()">
+                <option *ngFor="let col of collections" [value]="col">{{ col }}</option>
+              </select>
+            </div>
+
             <div class="search-box">
               <input type="text" [(ngModel)]="searchQuery" placeholder="Enter keyword or requirement sentence..." (keyup.enter)="evaluateSearch()">
               <button class="btn btn-primary" (click)="evaluateSearch()" [disabled]="!searchQuery">Search</button>
@@ -95,6 +110,74 @@ import { ApiService } from '../../services/api.service';
         </div>
       </div>
     </div>
+
+    <!-- Configure Collection & Extraction Parameters Modal Dialog -->
+    <div class="modal-backdrop" *ngIf="showConfigDialog">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Configure Ingestion Parameters</h3>
+          <button class="modal-close" (click)="closeDialog()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <p>📂 <strong>File Uploaded:</strong> <code>{{ selectedFile?.name }}</code></p>
+          
+          <!-- 1. Target Collection Section -->
+          <h4 style="margin-top: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">🗃️ 1. Target Collection</h4>
+          <div class="radio-group" style="margin-bottom: 12px; display: flex; gap: 16px; margin-top: 6px;">
+            <label class="radio-lbl">
+              <input type="radio" name="col_mode" value="add" [(ngModel)]="collectionMode"> Add to Existing
+            </label>
+            <label class="radio-lbl">
+              <input type="radio" name="col_mode" value="create" [(ngModel)]="collectionMode"> Create New
+            </label>
+          </div>
+          
+          <div class="form-group" *ngIf="collectionMode === 'add'">
+            <label class="form-label">Select Target Collection:</label>
+            <select [(ngModel)]="selectedCollection" style="width: 100%;">
+              <option *ngFor="let col of collections" [value]="col">{{ col }}</option>
+              <option *ngIf="collections.length === 0" value="aaram_guidelines">aaram_guidelines (Default)</option>
+            </select>
+          </div>
+          
+          <div class="form-group" *ngIf="collectionMode === 'create'">
+            <label class="form-label">Enter New Collection Name:</label>
+            <input type="text" [(ngModel)]="newCollectionName" placeholder="e.g. autosar_manuals" style="width: 100%;">
+          </div>
+          
+          <!-- 2. Extraction Parameters Section -->
+          <div *ngIf="isPdf" style="margin-top: 16px;">
+            <h4 style="border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">⚙️ 2. PDF Extraction Parameters</h4>
+            <p class="section-desc" *ngIf="totalPages > 0">Loaded document contains {{ totalPages }} pages.</p>
+            <div class="grid grid-2" style="margin-top: 8px; gap: 10px;">
+              <div class="form-group">
+                <label class="form-label">Start Page:</label>
+                <input type="number" [(ngModel)]="startPage" min="1" [max]="totalPages" style="width: 100%;">
+              </div>
+              <div class="form-group">
+                <label class="form-label">End Page:</label>
+                <input type="number" [(ngModel)]="endPage" min="1" [max]="totalPages" style="width: 100%;">
+              </div>
+            </div>
+            <div *ngIf="startPage > endPage" class="alert alert-danger" style="font-size: 0.8rem; color: var(--color-danger); padding: 8px; background: #fce8e6; border-radius: 4px; margin-top: 8px;">
+              Start Page cannot be greater than End Page.
+            </div>
+          </div>
+          
+          <div *ngIf="!isPdf" style="margin-top: 16px;">
+            <h4 style="border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">⚙️ 2. File Parameters</h4>
+            <p class="section-desc" *ngIf="selectedFile?.name?.endsWith('.xlsx') || selectedFile?.name?.endsWith('.xls')">Excel binary row parsing will be used.</p>
+            <p class="section-desc" *ngIf="!selectedFile?.name?.endsWith('.xlsx') && !selectedFile?.name?.endsWith('.xls')">Direct text content parsing will be used.</p>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeDialog()">Cancel</button>
+          <button class="btn btn-primary" [disabled]="!isConfigValid()" (click)="confirmConfig()">🧱 Confirm & Ingest</button>
+        </div>
+      </div>
+    </div>
   `,
   styles: [`
     .section-desc {
@@ -104,13 +187,11 @@ import { ApiService } from '../../services/api.service';
     }
     .file-details {
       margin-top: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
       background: var(--bg-primary);
-      padding: 8px 12px;
+      padding: 12px;
       border-radius: 6px;
       font-size: 0.85rem;
+      border: 1px solid var(--border-color);
     }
     .btn-sm {
       padding: 6px 12px;
@@ -144,12 +225,6 @@ import { ApiService } from '../../services/api.service';
       background: #212529;
       color: #f8f9fa;
       padding: 12px;
-    }
-    .log-title {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #adb5bd;
-      margin-bottom: 8px;
     }
     .log-window {
       height: 160px;
@@ -234,6 +309,104 @@ import { ApiService } from '../../services/api.service';
       text-align: center;
       padding: 16px;
     }
+
+    /* Modal dialog styling overlay */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      animation: fadeIn 0.2s ease-out;
+    }
+    
+    .modal-card {
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 550px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .modal-header h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+    
+    .modal-close {
+      background: transparent;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+      line-height: 1;
+      padding: 0;
+    }
+    
+    .modal-close:hover {
+      color: var(--text-primary);
+    }
+    
+    .modal-body {
+      padding: 20px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    
+    .modal-body h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+    
+    .modal-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    
+    .radio-lbl {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
   `]
 })
 export class RAGConfigComponent implements OnInit {
@@ -254,16 +427,48 @@ export class RAGConfigComponent implements OnInit {
   searchResults: any[] = [];
   searched: boolean = false;
 
+  // Dialog parameters
+  showConfigDialog = false;
+  collections: string[] = [];
+  collectionMode: 'add' | 'create' = 'add';
+  selectedCollection: string = 'aaram_guidelines';
+  newCollectionName: string = '';
+  isPdf = false;
+  startPage = 1;
+  endPage = 1;
+  totalPages = 0;
+  searchCollection = 'aaram_guidelines';
+
   constructor(private apiService: ApiService) {}
 
   ngOnInit(): void {
     this.loadMetrics();
+    this.loadCollections();
   }
 
   onFileSelected(event: any) {
     const file = event.target.files[0];
     if (file) {
       this.selectedFile = file;
+      this.isPdf = file.name.toLowerCase().endsWith('.pdf');
+      
+      this.loadCollections();
+
+      if (this.isPdf) {
+        this.apiService.inspectPdf(file).subscribe({
+          next: (res) => {
+            this.totalPages = res.pages;
+            this.startPage = 1;
+            this.endPage = res.pages;
+            this.showConfigDialog = true;
+          },
+          error: (err) => {
+            alert('Failed to inspect PDF: ' + (err.error?.detail || err.message));
+          }
+        });
+      } else {
+        this.showConfigDialog = true;
+      }
     }
   }
 
@@ -275,6 +480,49 @@ export class RAGConfigComponent implements OnInit {
     });
   }
 
+  loadCollections() {
+    this.apiService.getRagCollections().subscribe({
+      next: (cols) => {
+        this.collections = cols;
+        if (cols.includes('aaram_guidelines')) {
+          this.selectedCollection = 'aaram_guidelines';
+          this.searchCollection = 'aaram_guidelines';
+        } else if (cols.includes('requalitrace_guidelines')) {
+          this.selectedCollection = 'requalitrace_guidelines';
+          this.searchCollection = 'requalitrace_guidelines';
+        } else if (cols.length > 0) {
+          this.selectedCollection = cols[0];
+          this.searchCollection = cols[0];
+        } else {
+          this.selectedCollection = 'aaram_guidelines';
+          this.searchCollection = 'aaram_guidelines';
+        }
+      }
+    });
+  }
+
+  closeDialog() {
+    this.showConfigDialog = false;
+    this.selectedFile = null;
+  }
+
+  confirmConfig() {
+    this.showConfigDialog = false;
+    this.startIngestion();
+  }
+
+  isConfigValid(): boolean {
+    if (this.collectionMode === 'create' && !this.newCollectionName.trim()) {
+      return false;
+    }
+    if (this.isPdf) {
+      if (this.startPage < 1 || this.endPage < 1 || this.startPage > this.totalPages || this.endPage > this.totalPages || this.startPage > this.endPage) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   startIngestion() {
     if (!this.selectedFile) return;
     this.isTraining = true;
@@ -282,9 +530,21 @@ export class RAGConfigComponent implements OnInit {
     this.processedChunks = 0;
     this.logs = [];
     
-    this.addLog(`Starting document ingestion: ${this.selectedFile.name}...`);
+    const targetCol = this.collectionMode === 'create' ? this.newCollectionName.trim() : this.selectedCollection;
     
-    this.apiService.trainRAG(this.selectedFile).subscribe({
+    this.addLog(`Starting document ingestion: ${this.selectedFile.name}...`);
+    this.addLog(`Target Collection: ${targetCol} (Mode: ${this.collectionMode === 'create' ? 'Create' : 'Add'})`);
+    if (this.isPdf) {
+      this.addLog(`Slicing pages: ${this.startPage} to ${this.endPage}`);
+    }
+    
+    this.apiService.trainRAG(
+      this.selectedFile,
+      targetCol,
+      this.collectionMode === 'create' ? 'create' : 'add',
+      this.isPdf ? this.startPage : undefined,
+      this.isPdf ? this.endPage : undefined
+    ).subscribe({
       next: (event) => {
         if (event.status === 'started') {
           this.totalChunks = event.total_chunks;
@@ -298,6 +558,7 @@ export class RAGConfigComponent implements OnInit {
           this.progressPercent = 100;
           this.metrics = event.metrics;
           this.addLog(`Training completed successfully! Progressive commits completed.`);
+          this.loadCollections(); // Refresh collections list
         }
       },
       error: (err) => {
@@ -318,10 +579,15 @@ export class RAGConfigComponent implements OnInit {
     }, 50);
   }
 
+  onSearchCollectionChanged() {
+    this.searchResults = [];
+    this.searched = false;
+  }
+
   evaluateSearch() {
     if (!this.searchQuery) return;
     this.searched = true;
-    this.apiService.searchRag(this.searchQuery).subscribe({
+    this.apiService.searchRag(this.searchQuery, 5, this.searchCollection).subscribe({
       next: (res) => {
         this.searchResults = res;
       }
