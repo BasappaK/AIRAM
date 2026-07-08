@@ -173,7 +173,7 @@ import { ApiService } from '../../services/api.service';
                 <th>Status</th>
                 <th>{{ isTraceabilityRun ? 'Traced SWE.1 HLR ID' : 'Violated Rule' }}</th>
                 <th>Rationale / Reasoning</th>
-                <th>Corrected Requirement</th>
+                <th *ngIf="hasCorrections()">Corrected Requirement</th>
               </tr>
             </thead>
             <tbody>
@@ -187,7 +187,7 @@ import { ApiService } from '../../services/api.service';
                 </td>
                 <td style="font-weight: 500; font-family: monospace;">{{ row.failed_rule || 'N/A' }}</td>
                 <td style="color: var(--text-secondary); font-size: 0.8rem;">{{ row.rationale }}</td>
-                <td style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px;">
+                <td *ngIf="hasCorrections()" style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px;">
                   {{ row.corrected_req || '-' }}
                 </td>
               </tr>
@@ -694,5 +694,10 @@ export class RequirementsComponent implements OnInit, OnDestroy {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  }
+
+  hasCorrections(): boolean {
+    if (!this.results || this.results.length === 0) return false;
+    return this.results.some(row => row.corrected_req && row.corrected_req !== '-' && row.corrected_req.trim() !== '');
   }
 }
