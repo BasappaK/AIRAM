@@ -155,7 +155,9 @@ async def start_analysis(
     swe1_file: UploadFile = File(None),
     swe2_file: UploadFile = File(None),
     correct_quality: str = Form("false"),
-    correct_trace: str = Form("false")
+    correct_trace: str = Form("false"),
+    custom_context: str = Form(None),
+    custom_context_correction: str = Form(None)
 ):
     """Spawns an async row-by-row requirements analysis or traceability evaluation run."""
     run_id = str(uuid.uuid4())
@@ -183,7 +185,9 @@ async def start_analysis(
             use_rag=use_rag_bool,
             model_name=model_name,
             correct_quality=correct_quality_bool,
-            correct_trace=correct_trace_bool
+            correct_trace=correct_trace_bool,
+            custom_context=custom_context,
+            custom_context_correction=custom_context_correction
         )
     )
     

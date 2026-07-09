@@ -163,7 +163,8 @@ def load_json_rules() -> dict:
 
 def analyze_single_requirement(
     index, r, llm, rag, rag_context=None, selected_collections=None, 
-    is_strict_json=False, is_recheck=False, previous_rationale=None
+    is_strict_json=False, is_recheck=False, previous_rationale=None,
+    custom_context=None
 ):
 
     try:
@@ -237,7 +238,12 @@ def analyze_single_requirement(
             )
             
             system_prompt = get_effective_system_prompt(system_prompt, mode="analysis")
-            if rag_context:
+            if custom_context:
+                system_prompt += (
+                    "\nIn addition to standard rules, you MUST also conform to these custom evaluation criteria:\n"
+                    f"{custom_context}\n"
+                )
+            elif rag_context:
                 system_prompt += (
                     "\nIn addition to standard rules, you MUST also conform to these project-specific rules retrieved from the knowledge base:\n"
                     f"{rag_context}\n"
@@ -572,7 +578,7 @@ def analyze_requirements(requirements: List[Requirement], llm=None, progress_cal
                 
     return analysis_data
 
-def correct_single_requirement(index, r, llm, rag, rag_context=None, selected_collections=None, feedback_rule=None, feedback_rationale=None, initial_text=None):
+def correct_single_requirement(index, r, llm, rag, rag_context=None, selected_collections=None, feedback_rule=None, feedback_rationale=None, initial_text=None, custom_context=None):
     max_retries = 3
     current_text = initial_text if initial_text is not None else r.content
     failed_rule = feedback_rule
@@ -603,7 +609,12 @@ def correct_single_requirement(index, r, llm, rag, rag_context=None, selected_co
             "}"
         )
         system_prompt = get_effective_system_prompt(system_prompt, mode="process")
-        if rag_context:
+        if custom_context:
+            system_prompt += (
+                "\nIn addition to standard rules, you MUST also conform to these custom evaluation criteria when correcting the requirement:\n"
+                f"{custom_context}\n"
+            )
+        elif rag_context:
             system_prompt += (
                 "\nIn addition to standard rules, you MUST also conform to these project-specific rules retrieved from the knowledge base:\n"
                 f"{rag_context}\n"
