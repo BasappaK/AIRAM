@@ -131,25 +131,21 @@ private baseUrl = window.location.hostname === 'localhost'
     swe1File?: File,
     swe2File?: File,
     correctQuality: boolean = false,
-    correctTrace: boolean = false
+    correctTrace: boolean = false,
+    customContext?: string,
+    customContextCorrection?: string
   ): Observable<any> {
     const formData = new FormData();
     formData.append('run_type', runType);
-    if (guidelineId) {
-      formData.append('guideline_id', guidelineId);
-    }
-    formData.append('use_rag', useRag ? 'true' : 'false');
+    if (guidelineId) formData.append('guideline_id', guidelineId);
+    formData.append('use_rag', String(useRag));
     formData.append('model_name', modelName);
-    formData.append('correct_quality', correctQuality ? 'true' : 'false');
-    formData.append('correct_trace', correctTrace ? 'true' : 'false');
-    
-    if (swe1File) {
-      formData.append('swe1_file', swe1File);
-    }
-    if (swe2File) {
-      formData.append('swe2_file', swe2File);
-    }
-
+    if (swe1File) formData.append('swe1_file', swe1File);
+    if (swe2File) formData.append('swe2_file', swe2File);
+    formData.append('correct_quality', String(correctQuality));
+    formData.append('correct_trace', String(correctTrace));
+    if (customContext) formData.append('custom_context', customContext);
+    if (customContextCorrection) formData.append('custom_context_correction', customContextCorrection);
     return this.http.post(`${this.baseUrl}/api/analysis/start`, formData);
   }
 

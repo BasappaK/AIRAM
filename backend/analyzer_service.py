@@ -293,7 +293,9 @@ def analyze_quality(
     rag,
     rules_context: str,
     is_strict_json: bool,
-    correct_quality: bool = False
+    correct_quality: bool = False,
+    custom_context: str = None,
+    custom_context_correction: str = None
 ) -> dict:
     """Performs compliance check using POC auditor and performs automated rewrite correction if violation found and requested."""
     # 1. Run POC quality auditor
@@ -304,7 +306,8 @@ def analyze_quality(
         rag=rag,
         rag_context=rules_context,
         selected_collections="airam_guidelines",
-        is_strict_json=is_strict_json
+        is_strict_json=is_strict_json,
+        custom_context=custom_context
     )
     
     poc_status = res.get("Status", "Review")
@@ -327,7 +330,8 @@ def analyze_quality(
                 rag_context=rules_context,
                 selected_collections="airam_guidelines",
                 feedback_rule=failed_rule_str,
-                feedback_rationale=res.get("Rationale")
+                feedback_rationale=res.get("Rationale"),
+                custom_context=custom_context_correction
             )
         else:
             corrected_req = None
@@ -354,7 +358,9 @@ async def run_requirements_analysis_job(
     use_rag: bool = False,
     model_name: str = "nvidia/llama-3.3-nemotron-super-49b-v1.5",
     correct_quality: bool = False,
-    correct_trace: bool = False
+    correct_trace: bool = False,
+    custom_context: str = None,
+    custom_context_correction: str = None
 ):
     """Executes the analysis process row-by-row supporting Pause, Resume, Stop operations."""
     save_execution_run(run_id, run_type, "running")
@@ -467,7 +473,7 @@ async def run_requirements_analysis_job(
                 result["corrected_req"] = None
         else:
             # Call quality auditor
-            result = await asyncio.to_thread(analyze_quality, idx, r, llm_manager, rag_engine, rules_context, is_strict_json, correct_quality)
+            result = await asyncio.to_thread(analyze_quality, idx, r, llm_manager, rag_engine, rules_context, is_strict_json, correct_quality, custom_context, custom_context_correction)
             
         # Update the placeholder row with the final results
         status = result.get("status", "REVIEW").upper()
