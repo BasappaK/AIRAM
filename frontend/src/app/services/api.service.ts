@@ -9,7 +9,7 @@ export class ApiService {
   
 private baseUrl = window.location.hostname === 'localhost'
     ? 'http://localhost:8000'
-    : 'https://airam.onrender.com';
+    : 'https://aaram.onrender.com';
   
   constructor(private http: HttpClient) {}
 
