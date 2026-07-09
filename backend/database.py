@@ -123,6 +123,7 @@ def delete_guideline(guideline_id: str):
     cursor.execute("DELETE FROM guidelines WHERE id = ?", (guideline_id,))
     conn.commit()
     conn.close()
+    trigger_render_sync()
 
 def save_chunk_log(doc_name: str, chunk_index: int, text: str, tokens: int, qdrant_id: str):
     conn = get_connection()
@@ -254,6 +255,15 @@ def delete_execution_run(run_id: str):
     cursor.execute("DELETE FROM execution_runs WHERE run_id = ?", (run_id,))
     conn.commit()
     conn.close()
+    trigger_render_sync()
+
+def trigger_render_sync():
+    try:
+        from backend.database_render import sync_sqlite_to_postgres
+        import threading
+        threading.Thread(target=sync_sqlite_to_postgres, daemon=True).start()
+    except Exception as e:
+        print(f"[database] Failed to start Render sync: {e}", flush=True)
 
 if __name__ == "__main__":
     init_db()

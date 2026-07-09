@@ -19,7 +19,8 @@ from backend.database import (
     create_placeholder_result,
     update_execution_result_by_id,
     get_guideline_content,
-    get_guideline_details
+    get_guideline_details,
+    trigger_render_sync
 )
 from backend.rag_service import rag_engine
 
@@ -431,6 +432,7 @@ async def run_requirements_analysis_job(
             if not job_state or job_state["status"] == "stopped":
                 update_execution_status(run_id, "stopped")
                 qa_mod.CURRENT_RULES = None
+                trigger_render_sync()
                 return
             if job_state["status"] == "paused":
                 await asyncio.sleep(0.5)
@@ -490,3 +492,4 @@ async def run_requirements_analysis_job(
     ACTIVE_JOBS[run_id]["status"] = "completed"
     # Reset rules state
     qa_mod.CURRENT_RULES = None
+    trigger_render_sync()
