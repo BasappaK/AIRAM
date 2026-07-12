@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Input, HostListener, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, HostListener, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -64,18 +64,24 @@ import { ApiService } from '../../services/api.service';
 
             <div class="form-group" style="margin-top: 12px;">
               <label class="form-label">Rules Evaluation Mode</label>
-              <div class="radio-group">
+              <div class="radio-group" style="flex-wrap: wrap; gap: 12px; align-items: center;">
                 <label class="radio-lbl">
-                  <input type="radio" name="rule_mode" [value]="true" [(ngModel)]="useRag"> RAG Engine Search
+                  <input type="radio" name="rule_mode" value="rag" [(ngModel)]="rulesMode"> RAG Engine Search
                 </label>
                 <label class="radio-lbl">
-                  <input type="radio" name="rule_mode" [value]="false" [(ngModel)]="useRag"> Strict Guidelines File
+                  <input type="radio" name="rule_mode" value="strict" [(ngModel)]="rulesMode"> Strict Guidelines File
+                </label>
+                <label class="radio-lbl" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="radio" name="rule_mode" value="custom" [(ngModel)]="rulesMode"> Custom LLM Context
+                  <button type="button" *ngIf="rulesMode === 'custom'" class="btn btn-secondary btn-sm" (click)="openCustomContextModal()" style="padding: 2px 8px; font-size: 0.75rem; height: auto; min-height: 24px; display: inline-flex; align-items: center; gap: 3px; border-radius: 4px;">
+                    ⚙️ Configure
+                  </button>
                 </label>
               </div>
             </div>
 
             <!-- Guidelines File Selector if strict is chosen -->
-            <div class="form-group" *ngIf="!useRag" style="margin-top: 12px;">
+            <div class="form-group" *ngIf="rulesMode === 'strict'" style="margin-top: 12px;">
               <label class="form-label">Strict Guidelines Reference</label>
               <div style="display: flex; gap: 8px; align-items: stretch; position: relative;">
                 
@@ -100,7 +106,15 @@ import { ApiService } from '../../services/api.service';
                     <!-- Individual Guidelines -->
                     <label *ngFor="let g of guidelines" class="dropdown-item" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; font-size: 0.85rem; user-select: none;">
                       <input type="checkbox" [checked]="isSelectedGuideline(g.id)" (change)="toggleGuideline(g.id)">
-                      <span>{{ g.name }}</span>
+                      <span style="flex: 1;">{{ g.name }}</span>
+                      <button type="button" (click)="deleteGuideline(g.id, $event)" style="background: none; border: none; cursor: pointer; padding: 4px; color: #ef4444; opacity: 0.7; font-size: 1rem; transition: all 0.2s; display: flex; align-items: center; justify-content: center;" onmouseover="this.style.opacity=1; this.style.transform='scale(1.1)';" onmouseout="this.style.opacity=0.7; this.style.transform='scale(1)';" title="Delete Guideline">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          <line x1="10" y1="11" x2="10" y2="17"></line>
+                          <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                      </button>
                     </label>
                     
                     <div *ngIf="guidelines.length === 0" style="padding: 8px 12px; color: var(--text-secondary); font-size: 0.85rem;">
@@ -116,7 +130,7 @@ import { ApiService } from '../../services/api.service';
             </div>
 
             <!-- Embedding Model selector (Visible only if RAG search is chosen) -->
-            <div class="form-group" *ngIf="useRag" style="margin-top: 12px;">
+            <div class="form-group" *ngIf="rulesMode === 'rag'" style="margin-top: 12px;">
               <label class="form-label">RAG Embedding Model</label>
               <select [(ngModel)]="selectedEmbedModel" style="width: 100%; min-height: 38px;">
                 <option value="nvidia/embeddings-nv-embed-qa-4">nv-embed-qa-4 (NVIDIA)</option>
@@ -161,7 +175,10 @@ import { ApiService } from '../../services/api.service';
       <div class="card" *ngIf="results.length > 0">
         <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
           <span>📋 Analysis Matrix Results</span>
-          <button class="btn btn-secondary btn-sm" (click)="exportResults()">📥 Export CSV</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-warning btn-sm" (click)="clearResults()" style="background-color: #fff3cd; color: #856404; border-color: #ffeeba;">🧹 Clear Results</button>
+            <button class="btn btn-secondary btn-sm" (click)="exportResults()">📥 Export CSV</button>
+          </div>
         </div>
         
         <div class="table-container">
@@ -173,11 +190,11 @@ import { ApiService } from '../../services/api.service';
                 <th>Status</th>
                 <th>{{ isTraceabilityRun ? 'Traced SWE.1 HLR ID' : 'Violated Rule' }}</th>
                 <th>Rationale / Reasoning</th>
-                <th>Corrected Requirement</th>
+                <th *ngIf="hasCorrections()">Corrected Requirement</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let row of results">
+              <tr *ngFor="let row of results | slice:(currentPage - 1) * pageSize : currentPage * pageSize">
                 <td style="font-weight: 600; white-space: nowrap;">{{ row.req_id }}</td>
                 <td style="max-width: 300px;">{{ row.input_req }}</td>
                 <td>
@@ -187,12 +204,28 @@ import { ApiService } from '../../services/api.service';
                 </td>
                 <td style="font-weight: 500; font-family: monospace;">{{ row.failed_rule || 'N/A' }}</td>
                 <td style="color: var(--text-secondary); font-size: 0.8rem;">{{ row.rationale }}</td>
-                <td style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px;">
+                <td *ngIf="hasCorrections()" style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px;">
                   {{ row.corrected_req || '-' }}
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+        
+        <!-- Pagination Footer -->
+        <div class="pagination-footer" *ngIf="results.length > pageSize" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background-color: #f8f9fa; border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-secondary);">
+          <div class="pagination-info">
+            Showing <strong style="color: var(--text-primary);">{{ (currentPage - 1) * pageSize + 1 }}</strong> - <strong style="color: var(--text-primary);">{{ getMin(currentPage * pageSize, results.length) }}</strong> of <strong style="color: var(--text-primary);">{{ results.length }}</strong> requirements
+          </div>
+          <div class="pagination-controls" style="display: flex; align-items: center; gap: 12px;">
+            <button class="btn btn-sm btn-secondary pagination-btn" [disabled]="currentPage === 1" (click)="setPage(currentPage - 1)" style="padding: 3px 10px; font-size: 0.75rem; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid var(--border-color); background-color: #fff; cursor: pointer;">
+              ‹ Prev
+            </button>
+            <span class="pagination-indicator" style="font-weight: 500; color: var(--text-primary);">Page {{ currentPage }} of {{ getTotalPages() }}</span>
+            <button class="btn btn-sm btn-secondary pagination-btn" [disabled]="currentPage === getTotalPages()" (click)="setPage(currentPage + 1)" style="padding: 3px 10px; font-size: 0.75rem; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid var(--border-color); background-color: #fff; cursor: pointer;">
+              Next ›
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -234,6 +267,79 @@ import { ApiService } from '../../services/api.service';
 
           <div *ngIf="uploadedStatus" class="alert alert-success" style="margin-top: 16px; padding: 12px; background: #e6f4ea; color: var(--color-success); border-radius: 6px; font-size: 0.85rem;">
             {{ uploadedStatus }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom LLM Context Setup Modal -->
+    <div class="modal-backdrop" *ngIf="showCustomContextModal">
+      <div class="modal-card" style="width: 650px; max-width: 95%; max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="modal-header" style="flex-shrink: 0;">
+            <div class="modal-title">⚙️ Configure Custom LLM Context</div>
+          <button type="button" class="btn-close" (click)="closeCustomContextModal()">✕</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; overflow-y: auto; flex: 1;">
+          
+          <!-- Simple Tab Switcher (Only visible if Quality Correction is enabled) -->
+          <div *ngIf="actions.correct" style="display: flex; gap: 8px; border-bottom: 2px solid var(--border-color); margin-bottom: 8px;">
+            <button type="button" (click)="activeConfigTab = 'analysis'" [style.border-bottom]="activeConfigTab === 'analysis' ? '2px solid var(--color-primary)' : 'none'" [style.color]="activeConfigTab === 'analysis' ? 'var(--color-primary)' : 'var(--text-secondary)'" style="background: none; border: none; padding: 8px 16px; font-weight: 600; cursor: pointer; font-size: 0.9rem; outline: none;">🔍 Auditor Config</button>
+            <button type="button" (click)="activeConfigTab = 'correction'" [style.border-bottom]="activeConfigTab === 'correction' ? '2px solid var(--color-primary)' : 'none'" [style.color]="activeConfigTab === 'correction' ? 'var(--color-primary)' : 'var(--text-secondary)'" style="background: none; border: none; padding: 8px 16px; font-weight: 600; cursor: pointer; font-size: 0.9rem; outline: none;">🛠️ Corrector Config</button>
+          </div>
+
+          <!-- Tab 1: Analysis Auditor Config -->
+          <ng-container *ngIf="activeConfigTab === 'analysis'">
+            <p class="section-desc" style="color: var(--text-secondary); font-size: 0.8rem; margin: 0;">
+              Define your custom validation rules. This block is injected into the LLM system prompt for the Quality Auditor.
+            </p>
+
+            <!-- 1. Header (Read-only) -->
+            <div class="form-group" style="margin-top: 4px;">
+              <label class="form-label" style="font-weight: 600; font-size: 0.75rem;">System Persona (Read-only Header)</label>
+              <div style="background-color: #f8f9fa; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; font-size: 0.7rem; color: #666; max-height: 60px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; line-height: 1.25;">{{ fixedPromptHeader }}</div>
+            </div>
+
+            <!-- 2. Custom Criteria (Editable) -->
+            <div class="form-group" style="margin-top: 4px;">
+              <label class="form-label" style="font-weight: 600; font-size: 0.8rem; color: var(--color-primary);">Custom Audit Rules (Editable Context)</label>
+              <textarea [(ngModel)]="customContextText" rows="3" placeholder="Write your custom validation rules here..." style="width: 100%; border: 1px solid var(--color-primary); border-radius: 6px; padding: 8px; font-size: 0.8rem; font-family: inherit; resize: vertical; outline: none;"></textarea>
+            </div>
+
+            <!-- 3. Footer (Read-only) -->
+            <div class="form-group" style="margin-top: 4px;">
+              <label class="form-label" style="font-weight: 600; font-size: 0.75rem;">Output Format Constraint (Read-only Footer)</label>
+              <div style="background-color: #f8f9fa; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; font-size: 0.7rem; color: #666; max-height: 60px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; line-height: 1.25;">{{ fixedPromptFooter }}</div>
+            </div>
+          </ng-container>
+
+          <!-- Tab 2: Correction Corrector Config -->
+          <ng-container *ngIf="activeConfigTab === 'correction' && actions.correct">
+            <p class="section-desc" style="color: var(--text-secondary); font-size: 0.8rem; margin: 0;">
+              Define your custom instructions for rewriting requirements. This block is injected into the LLM system prompt for the Quality Corrector.
+            </p>
+
+            <!-- 1. Header (Read-only) -->
+            <div class="form-group" style="margin-top: 4px;">
+              <label class="form-label" style="font-weight: 600; font-size: 0.75rem;">Corrector Persona (Read-only Header)</label>
+              <div style="background-color: #f8f9fa; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; font-size: 0.7rem; color: #666; max-height: 60px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; line-height: 1.25;">{{ fixedPromptHeaderCorrection }}</div>
+            </div>
+
+            <!-- 2. Custom Criteria (Editable) -->
+            <div class="form-group" style="margin-top: 4px;">
+              <label class="form-label" style="font-weight: 600; font-size: 0.8rem; color: var(--color-primary);">Custom Correction Rules (Editable Context)</label>
+              <textarea [(ngModel)]="customContextCorrectionText" rows="3" placeholder="Write your custom rewriting/correction guidelines here..." style="width: 100%; border: 1px solid var(--color-primary); border-radius: 6px; padding: 8px; font-size: 0.8rem; font-family: inherit; resize: vertical; outline: none;"></textarea>
+            </div>
+
+            <!-- 3. Footer (Read-only) -->
+            <div class="form-group" style="margin-top: 4px;">
+              <label class="form-label" style="font-weight: 600; font-size: 0.75rem;">Output Format Constraint (Read-only Footer)</label>
+              <div style="background-color: #f8f9fa; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; font-size: 0.7rem; color: #666; max-height: 60px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; line-height: 1.25;">{{ fixedPromptFooterCorrection }}</div>
+            </div>
+          </ng-container>
+
+          <div style="display: flex; gap: 12px; margin-top: 8px; flex-shrink: 0;">
+            <button type="button" class="btn btn-primary" (click)="saveCustomContext()" style="flex: 1;">Save Configurations</button>
+            <button type="button" class="btn btn-secondary" (click)="closeCustomContextModal()">Cancel</button>
           </div>
         </div>
       </div>
@@ -394,10 +500,51 @@ export class RequirementsComponent implements OnInit, OnDestroy {
     correctTrace: false
   };
 
-  useRag: boolean = false;
+  rulesMode: 'strict' | 'rag' | 'custom' = 'strict';
   guidelines: any[] = [];
   selectedGuidelineIds: string[] = [];
   showDropdown = false;
+  
+  // Custom LLM Context configurations
+  showCustomContextModal = false;
+  activeConfigTab: 'analysis' | 'correction' = 'analysis';
+  customContextText = '1. The requirement must be written clearly.\n2. Do not use complex compound sentences.\n3. The statement must explicitly define an automotive subsystem name.';
+  customContextCorrectionText = '1. Rewrite requirement to be clear and single-focused.\n2. Maintain EARS syntax pattern.\n3. Ensure all numbers use explicitly defined metric units.';
+  
+  fixedPromptHeader = `You are a strict, deterministic Systems Engineering Requirements Auditor.
+Your task is to analyze an engineering requirement using INCOSE guidelines and EARS syntax.
+You MUST:
+- Identify structural components (trigger, condition, system response)
+- Evaluate compliance against INCOSE guidelines, EARS syntax`;
+
+  fixedPromptFooter = `Rules for Output:
+1. Return ONLY valid JSON exactly matching the schema below.
+2. Do NOT include any explanation or markdown formatting outside the JSON.
+3. Do NOT invent information. Output must be perfectly reproducible.
+
+JSON Schema:
+{
+  "status": "Passed" or "Review",
+  "failed_rules": ["Rule name 1", "Rule name 2", ...] or [],
+  "rationale": "Concise structured explanation"
+}`;
+
+  fixedPromptHeaderCorrection = `You are a strict, deterministic Senior Systems Engineer and Requirements Expert.
+Your task is to analyze and correct engineering requirements using INCOSE guidelines and EARS syntax.
+You MUST:
+- Split the requirement if it contains multiple actions
+- Clean up any grammatical or structural issues`;
+
+  fixedPromptFooterCorrection = `Rules for Output:
+1. Return ONLY valid JSON exactly matching the schema below.
+2. Do NOT include any explanation or markdown formatting outside the JSON.
+3. Do NOT invent information. Output must be perfectly reproducible.
+
+JSON Schema:
+{
+  "split_required": boolean,
+  "corrected_requirements": [string]
+}`;
   
   // Modal Upload bindings
   showUploadModal = false;
@@ -421,11 +568,15 @@ export class RequirementsComponent implements OnInit, OnDestroy {
   results: any[] = [];
   history: any[] = [];
   
+  // Pagination
+  currentPage = 1;
+  pageSize = 15;
+  
   isTraceabilityRun = false;
   
   private timerSubscription: any;
 
-  constructor(private apiService: ApiService, private elementRef: ElementRef) {}
+  constructor(private apiService: ApiService, private elementRef: ElementRef, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadGuidelines();
@@ -501,6 +652,37 @@ export class RequirementsComponent implements OnInit, OnDestroy {
     }
   }
 
+  openCustomContextModal() {
+    this.showCustomContextModal = true;
+    if (!this.actions.correct) {
+      this.activeConfigTab = 'analysis';
+    }
+  }
+
+  closeCustomContextModal() {
+    this.showCustomContextModal = false;
+  }
+
+  saveCustomContext() {
+    this.showCustomContextModal = false;
+    this.cdr.detectChanges();
+  }
+
+  deleteGuideline(id: string, event: Event) {
+    event.stopPropagation();
+    if (confirm('Are you sure you want to delete this strict guideline file?')) {
+      this.apiService.deleteGuideline(id).subscribe({
+        next: () => {
+          this.selectedGuidelineIds = this.selectedGuidelineIds.filter(gId => gId !== id);
+          this.loadGuidelines();
+        },
+        error: (err) => {
+          alert('Failed to delete guideline: ' + (err.error?.detail || err.message));
+        }
+      });
+    }
+  }
+
   uploadStandard() {
     if (!this.standardFile || !this.newStandardName) return;
     this.isUploadingStandard = true;
@@ -513,9 +695,11 @@ export class RequirementsComponent implements OnInit, OnDestroy {
         this.newStandardName = '';
         this.standardFile = null;
         this.loadGuidelines();
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.isUploadingStandard = false;
+        this.cdr.detectChanges();
         alert('Failed to upload guidelines: ' + (err.error?.detail || err.message));
       }
     });
@@ -525,6 +709,7 @@ export class RequirementsComponent implements OnInit, OnDestroy {
     this.apiService.getGuidelines().subscribe({
       next: (res) => {
         this.guidelines = res;
+        this.cdr.detectChanges();
       }
     });
   }
@@ -549,6 +734,11 @@ export class RequirementsComponent implements OnInit, OnDestroy {
   }
 
   startRun() {
+    if (this.rulesMode === 'strict' && this.selectedGuidelineIds.length === 0) {
+      alert('⚠️ Please select at least one strict guideline document from the dropdown before starting execution.');
+      return;
+    }
+
     let runType = 'quality';
     if (this.actions.trace || this.actions.correctTrace) {
       runType = 'traceability';
@@ -562,16 +752,26 @@ export class RequirementsComponent implements OnInit, OnDestroy {
     this.isFinished = false;
     this.runStatus = 'running';
     this.results = [];
+    this.currentPage = 1;
+    this.currentRow = 0;
+    this.totalRows = 0;
+    this.activeRunId = 'Initializing...';
+ 
+    const useRagBool = this.rulesMode === 'rag';
+    const customPromptVal = this.rulesMode === 'custom' ? this.customContextText : undefined;
+    const customPromptCorrectionVal = this.rulesMode === 'custom' ? this.customContextCorrectionText : undefined;
 
     this.apiService.startAnalysis(
       runType,
-      this.selectedGuidelineIds.join(',') || null,
-      this.useRag,
+      this.rulesMode === 'strict' ? (this.selectedGuidelineIds.join(',') || null) : null,
+      useRagBool,
       this.selectedAnalysisModel,
       this.swe1File || undefined,
       this.swe2File || undefined,
       this.actions.correct,
-      this.actions.correctTrace
+      this.actions.correctTrace,
+      customPromptVal,
+      customPromptCorrectionVal
     ).subscribe({
       next: (res) => {
         this.activeRunId = res.run_id;
@@ -597,6 +797,7 @@ export class RequirementsComponent implements OnInit, OnDestroy {
           this.apiService.getRunResults(this.activeRunId).subscribe({
             next: (res) => {
               this.results = res;
+              this.cdr.detectChanges();
             }
           });
 
@@ -615,6 +816,7 @@ export class RequirementsComponent implements OnInit, OnDestroy {
           } else {
             this.isPaused = false;
           }
+          this.cdr.detectChanges();
         }
       });
     }, 1000);
@@ -658,10 +860,12 @@ export class RequirementsComponent implements OnInit, OnDestroy {
     this.activeRunId = runId;
     const matchedRun = this.history.find(r => r.run_id === runId);
     this.isTraceabilityRun = matchedRun?.type === 'traceability';
+    this.currentPage = 1;
     
     this.apiService.getRunResults(runId).subscribe({
       next: (res) => {
         this.results = res;
+        this.cdr.detectChanges();
       }
     });
   }
@@ -690,9 +894,41 @@ export class RequirementsComponent implements OnInit, OnDestroy {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `AARAM_Run_${this.activeRunId.substring(0,8)}.csv`);
+    link.setAttribute("download", `AIRAM_Run_${this.activeRunId.substring(0,8)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  }
+
+  hasCorrections(): boolean {
+    if (!this.results || this.results.length === 0) return false;
+    return this.results.some(row => row.corrected_req && row.corrected_req !== '-' && row.corrected_req.trim() !== '');
+  }
+
+  // Pagination & Reset Methods
+  getTotalPages(): number {
+    return Math.ceil(this.results.length / this.pageSize) || 1;
+  }
+
+  setPage(page: number) {
+    if (page >= 1 && page <= this.getTotalPages()) {
+      this.currentPage = page;
+      this.cdr.detectChanges();
+    }
+  }
+
+  getMin(a: number, b: number): number {
+    return Math.min(a, b);
+  }
+
+  clearResults() {
+    this.results = [];
+    this.activeRunId = '';
+    this.runStatus = '';
+    this.isFinished = false;
+    this.currentRow = 0;
+    this.totalRows = 0;
+    this.currentPage = 1;
+    this.cdr.detectChanges();
   }
 }

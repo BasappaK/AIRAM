@@ -2,7 +2,7 @@ import os
 import sqlite3
 import json
 
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aaram.db")
+DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "airam.db")
 OLD_DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requalitrace.db")
 
 # Automatically migrate database if old one exists
@@ -117,6 +117,13 @@ def get_guideline_details(guideline_id: str):
         }
     return None
 
+def delete_guideline(guideline_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM guidelines WHERE id = ?", (guideline_id,))
+    conn.commit()
+    conn.close()
+
 def save_chunk_log(doc_name: str, chunk_index: int, text: str, tokens: int, qdrant_id: str):
     conn = get_connection()
     cursor = conn.cursor()
@@ -178,6 +185,28 @@ def save_execution_result(run_id: str, req_id: str, input_req: str, status: str,
     cursor.execute(
         "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id)
+    )
+    conn.commit()
+    conn.close()
+
+def create_placeholder_result(run_id: str, req_id: str, input_req: str) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (run_id, req_id, input_req, "PROCESSING", None, "Analyzing requirement... waiting for LLM response", None, None)
+    )
+    last_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return last_id
+
+def update_execution_result_by_id(row_id: int, status: str, failed_rule: str, rationale: str, corrected_req: str, swe1_id: str = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE execution_results SET status = ?, failed_rule = ?, rationale = ?, corrected_req = ?, swe1_id = ? WHERE id = ?",
+        (status, failed_rule, rationale, corrected_req, swe1_id, row_id)
     )
     conn.commit()
     conn.close()

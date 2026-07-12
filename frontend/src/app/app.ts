@@ -1,4 +1,4 @@
-import { Component, ViewChild, OnInit } from '@angular/core';
+import { Component, ViewChild, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DashboardComponent } from './components/dashboard/dashboard';
@@ -36,7 +36,7 @@ import { ApiService } from './services/api.service';
             </svg>
           </div>
           <div class="logo-text-container">
-            <span class="logo-text-main">AARAM</span>
+            <span class="logo-text-main">AIRAM</span>
             <span class="logo-text-sub">AI-Assisted Requirement Analysis & Management</span>
           </div>
         </div>
@@ -262,7 +262,7 @@ export class App implements OnInit {
 
   @ViewChild('requirementsComp') requirementsComp?: RequirementsComponent;
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   private ws: WebSocket | null = null;
 
@@ -280,10 +280,12 @@ export class App implements OnInit {
 
       this.ws.onopen = () => {
         this.backendStatus = 'connected';
+        this.cdr.detectChanges();
       };
 
       this.ws.onclose = () => {
         this.backendStatus = 'disconnected';
+        this.cdr.detectChanges();
         setTimeout(() => {
           if (this.backendStatus === 'disconnected') {
             this.connectWebSocket();
@@ -293,6 +295,7 @@ export class App implements OnInit {
 
       this.ws.onerror = () => {
         this.backendStatus = 'disconnected';
+        this.cdr.detectChanges();
       };
     } catch (e) {
       this.backendStatus = 'disconnected';

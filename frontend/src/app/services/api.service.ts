@@ -25,6 +25,10 @@ private baseUrl = window.location.hostname === 'localhost'
     return this.http.post(`${this.baseUrl}/api/guidelines/upload`, formData);
   }
 
+  deleteGuideline(id: string): Observable<any> {
+    return this.http.delete(`${this.baseUrl}/api/guidelines/${id}`);
+  }
+
   getGuidelines(): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/api/guidelines`);
   }
@@ -34,7 +38,7 @@ private baseUrl = window.location.hostname === 'localhost'
     return this.http.get(`${this.baseUrl}/api/rag/metrics`);
   }
 
-  searchRag(query: string, limit: number = 5, collectionName: string = 'aaram_guidelines'): Observable<any[]> {
+  searchRag(query: string, limit: number = 5, collectionName: string = 'airam_guidelines'): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/api/rag/search`, {
       params: { 
         query, 
@@ -56,7 +60,7 @@ private baseUrl = window.location.hostname === 'localhost'
 
   trainRAG(
     file: File, 
-    collectionName: string = 'aaram_guidelines', 
+    collectionName: string = 'airam_guidelines', 
     collectionMode: string = 'create',
     startPage?: number,
     endPage?: number
@@ -127,25 +131,21 @@ private baseUrl = window.location.hostname === 'localhost'
     swe1File?: File,
     swe2File?: File,
     correctQuality: boolean = false,
-    correctTrace: boolean = false
+    correctTrace: boolean = false,
+    customContext?: string,
+    customContextCorrection?: string
   ): Observable<any> {
     const formData = new FormData();
     formData.append('run_type', runType);
-    if (guidelineId) {
-      formData.append('guideline_id', guidelineId);
-    }
-    formData.append('use_rag', useRag ? 'true' : 'false');
+    if (guidelineId) formData.append('guideline_id', guidelineId);
+    formData.append('use_rag', String(useRag));
     formData.append('model_name', modelName);
-    formData.append('correct_quality', correctQuality ? 'true' : 'false');
-    formData.append('correct_trace', correctTrace ? 'true' : 'false');
-    
-    if (swe1File) {
-      formData.append('swe1_file', swe1File);
-    }
-    if (swe2File) {
-      formData.append('swe2_file', swe2File);
-    }
-
+    if (swe1File) formData.append('swe1_file', swe1File);
+    if (swe2File) formData.append('swe2_file', swe2File);
+    formData.append('correct_quality', String(correctQuality));
+    formData.append('correct_trace', String(correctTrace));
+    if (customContext) formData.append('custom_context', customContext);
+    if (customContextCorrection) formData.append('custom_context_correction', customContextCorrection);
     return this.http.post(`${this.baseUrl}/api/analysis/start`, formData);
   }
 

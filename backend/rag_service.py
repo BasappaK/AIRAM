@@ -15,7 +15,7 @@ rag_engine = RAGEngine(llm_manager=llm_manager)
 def train_document_stream(
     file_content: bytes, 
     filename: str, 
-    collection_name: str = "aaram_guidelines",
+    collection_name: str = "airam_guidelines",
     collection_mode: str = "create",
     start_page: int = None,
     end_page: int = None
@@ -115,7 +115,7 @@ def train_document_stream(
     metrics = get_chunking_metrics()
     yield {"status": "completed", "total_chunks": total_chunks, "metrics": metrics}
 
-def search_guideline_chunks(query: str, limit: int = 5, collection_name: str = "aaram_guidelines") -> list:
+def search_guideline_chunks(query: str, limit: int = 5, collection_name: str = "airam_guidelines") -> list:
     """Searches the vector database for relevant guideline chunks using RAGEngine."""
     try:
         results = rag_engine.search(query, collection_name=collection_name, top_k=limit)

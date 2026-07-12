@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -137,7 +137,7 @@ import { ApiService } from '../../services/api.service';
             <label class="form-label">Select Target Collection:</label>
             <select [(ngModel)]="selectedCollection" style="width: 100%;">
               <option *ngFor="let col of collections" [value]="col">{{ col }}</option>
-              <option *ngIf="collections.length === 0" value="aaram_guidelines">aaram_guidelines (Default)</option>
+              <option *ngIf="collections.length === 0" value="airam_guidelines">airam_guidelines (Default)</option>
             </select>
           </div>
           
@@ -431,15 +431,15 @@ export class RAGConfigComponent implements OnInit {
   showConfigDialog = false;
   collections: string[] = [];
   collectionMode: 'add' | 'create' = 'add';
-  selectedCollection: string = 'aaram_guidelines';
+  selectedCollection: string = 'airam_guidelines';
   newCollectionName: string = '';
   isPdf = false;
   startPage = 1;
   endPage = 1;
   totalPages = 0;
-  searchCollection = 'aaram_guidelines';
+  searchCollection = 'airam_guidelines';
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadMetrics();
@@ -484,9 +484,9 @@ export class RAGConfigComponent implements OnInit {
     this.apiService.getRagCollections().subscribe({
       next: (cols) => {
         this.collections = cols;
-        if (cols.includes('aaram_guidelines')) {
-          this.selectedCollection = 'aaram_guidelines';
-          this.searchCollection = 'aaram_guidelines';
+        if (cols.includes('airam_guidelines')) {
+          this.selectedCollection = 'airam_guidelines';
+          this.searchCollection = 'airam_guidelines';
         } else if (cols.includes('requalitrace_guidelines')) {
           this.selectedCollection = 'requalitrace_guidelines';
           this.searchCollection = 'requalitrace_guidelines';
@@ -494,8 +494,8 @@ export class RAGConfigComponent implements OnInit {
           this.selectedCollection = cols[0];
           this.searchCollection = cols[0];
         } else {
-          this.selectedCollection = 'aaram_guidelines';
-          this.searchCollection = 'aaram_guidelines';
+          this.selectedCollection = 'airam_guidelines';
+          this.searchCollection = 'airam_guidelines';
         }
       }
     });
@@ -560,10 +560,12 @@ export class RAGConfigComponent implements OnInit {
           this.addLog(`Training completed successfully! Progressive commits completed.`);
           this.loadCollections(); // Refresh collections list
         }
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.isTraining = false;
         this.addLog(`Error during training: ${err.message || err}`);
+        this.cdr.detectChanges();
       }
     });
   }

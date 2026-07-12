@@ -22,6 +22,7 @@ from backend.database import (
     init_db,
     save_guidelines,
     get_all_guidelines,
+    delete_guideline,
     get_previous_executions,
     get_execution_results,
     update_execution_minimized,
@@ -37,7 +38,7 @@ async def lifespan(app: FastAPI):
     init_db()
     yield
 
-app = FastAPI(title="AARAM Backend", lifespan=lifespan)
+app = FastAPI(title="AIRAM Backend", lifespan=lifespan)
 
 # Enable CORS for Angular frontend
 app.add_middleware(
@@ -76,6 +77,12 @@ async def upload_guidelines(
 async def get_guidelines():
     """Lists all available strict guideline documents."""
     return get_all_guidelines()
+
+@app.delete("/api/guidelines/{guideline_id}")
+async def remove_guideline(guideline_id: str):
+    """Deletes a strict guideline document."""
+    delete_guideline(guideline_id)
+    return {"status": "success", "id": guideline_id}
 
 @app.post("/api/rag/train")
 async def train_rag(
@@ -148,7 +155,9 @@ async def start_analysis(
     swe1_file: UploadFile = File(None),
     swe2_file: UploadFile = File(None),
     correct_quality: str = Form("false"),
-    correct_trace: str = Form("false")
+    correct_trace: str = Form("false"),
+    custom_context: str = Form(None),
+    custom_context_correction: str = Form(None)
 ):
     """Spawns an async row-by-row requirements analysis or traceability evaluation run."""
     run_id = str(uuid.uuid4())
@@ -176,7 +185,9 @@ async def start_analysis(
             use_rag=use_rag_bool,
             model_name=model_name,
             correct_quality=correct_quality_bool,
-            correct_trace=correct_trace_bool
+            correct_trace=correct_trace_bool,
+            custom_context=custom_context,
+            custom_context_correction=custom_context_correction
         )
     )
     

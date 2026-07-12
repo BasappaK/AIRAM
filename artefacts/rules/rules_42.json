@@ -1,0 +1,441 @@
+{
+  "INCOSE-001": {
+    "rule_name": "structured_statements",
+    "description": "Need and requirement statements must conform to one of the agreed patterns, thus resulting in a well-structured complete statement.",
+    "trigger_criteria": [
+      "Statement does not follow an agreed pattern, e.g. '<Condition/Trigger> THE <SUBJECT> SHALL <ACTION> <OBJECT> <CONSTRAINT>'",
+      "Statement is missing a clear subject, verb, or object entirely",
+      "Statement is a sentence fragment rather than a complete requirement pattern"
+    ],
+    "example_violation": "VehSpd, then process it.",
+    "example_compliant": "WHILE the vehicle speed is within [0 kph, 250 kph], THE SYSTEM SHALL process the vehicle speed value within [50 ms].",
+    "disambiguation": "This is a structural/template check. Do not use for grammar (INCOSE-012) or punctuation (INCOSE-014) issues; use only when the overall pattern/template is not followed."
+  },
+  "INCOSE-002": {
+    "rule_name": "active_voice",
+    "description": "Use the active voice in the need or requirement statement with the responsible entity clearly identified as the subject of the sentence.",
+    "trigger_criteria": [
+      "Sentence uses passive voice, e.g. 'the value shall be processed by the system' instead of 'THE SYSTEM SHALL process the value'",
+      "Responsible entity/actor is absent or implied rather than stated as the grammatical subject"
+    ],
+    "example_violation": "The vehicle speed value shall be processed within 50 ms.",
+    "example_compliant": "THE SYSTEM SHALL process the vehicle speed value within [50 ms].",
+    "disambiguation": "Only flag if voice is passive or the responsible entity is missing/ambiguous. Do not flag for wording precision issues (see INCOSE-007)."
+  },
+  "INCOSE-003": {
+    "rule_name": "appropriate_subject_verb",
+    "description": "Ensure the subject and verb of the need or requirement statement are appropriate to the entity to which the statement refers.",
+    "trigger_criteria": [
+      "Verb implies a capability the stated subject cannot logically perform (e.g. a hardware component 'shall decide')",
+      "Subject is too broad/generic for the action described (e.g. 'THE VEHICLE SHALL' when only one subsystem is responsible)"
+    ],
+    "example_violation": "THE SENSOR SHALL decide the appropriate safe state.",
+    "example_compliant": "THE SYSTEM SHALL transition to the defined safe state.",
+    "disambiguation": "Distinct from INCOSE-002 (voice) — this checks whether the specific subject/verb pairing is logically appropriate, not whether voice is active."
+  },
+  "INCOSE-004": {
+    "rule_name": "defined_terms",
+    "description": "Define all terms used within the need statement and requirement statement within an associated glossary and/or data dictionary.",
+    "trigger_criteria": [
+      "Statement uses a domain-specific noun, signal name, code, or identifier (e.g. VehSpd, DTC_101_VSPD_OOR_HI, F_OOR_HI_VehSpd) with no accompanying glossary/data dictionary reference provided in the artifact set",
+      "Only flag when no glossary/dictionary is referenced or supplied alongside the requirement; if a glossary is provided and the term appears in it, do NOT flag"
+    ],
+    "example_violation": "THE SYSTEM SHALL set DTC_101_VSPD_OOR_HI. (no glossary entry provided for DTC_101_VSPD_OOR_HI)",
+    "example_compliant": "THE SYSTEM SHALL set the diagnostic trouble code for vehicle speed out-of-range-high, as defined in the Signal Data Dictionary [ref].",
+    "disambiguation": "This is about missing definitions, not about abbreviation usage itself (see INCOSE-038). A defined abbreviation still needs a glossary entry to satisfy this rule; an undefined non-abbreviated term also violates this rule."
+  },
+  "INCOSE-005": {
+    "rule_name": "definite_articles",
+    "description": "Use the definite article 'the' rather than the indefinite article 'a'.",
+    "trigger_criteria": [
+      "Statement uses 'a' or 'an' where a specific, identifiable entity is intended",
+      "Do not flag generic/general statements where 'a' is grammatically required for a non-specific class"
+    ],
+    "example_violation": "THE SYSTEM SHALL raise a fault when a value exceeds the threshold.",
+    "example_compliant": "THE SYSTEM SHALL raise THE fault when THE value exceeds THE threshold.",
+    "disambiguation": "Narrow, mechanical check on article choice only."
+  },
+  "INCOSE-006": {
+    "rule_name": "common_units_of_measure",
+    "description": "When stating quantities, all numbers should have appropriate and consistent units of measure explicitly stated using a common measurement system in terms of the thing the number refers.",
+    "trigger_criteria": [
+      "A numeric quantity is stated without a unit of measure",
+      "Units mix measurement systems inconsistently within the same document/set (e.g. kph in one requirement, mph in another for the same quantity)"
+    ],
+    "example_violation": "THE SYSTEM SHALL process the value within 50.",
+    "example_compliant": "THE SYSTEM SHALL process the value within [50 ms].",
+    "disambiguation": "Checks presence/consistency of units, not whether the unit itself is an abbreviation (that is INCOSE-038) and not decimal formatting (INCOSE-040)."
+  },
+  "INCOSE-007": {
+    "rule_name": "vague_terms",
+    "description": "Avoid the use of vague terms that provide vague quantification, such as 'some', 'any', 'allowable', 'several', 'many', 'a lot of', 'a few', 'almost always', 'very nearly', 'nearly', 'about', 'close to', 'almost', and 'approximate'. Avoid vague adjectives such as 'ancillary', 'relevant', 'routine', 'common', 'generic', 'significant', 'flexible', 'expandable', 'typical', 'sufficient', 'adequate', 'appropriate', 'efficient', 'effective', 'proficient', 'reasonable' and 'customary'.",
+    "trigger_criteria": [
+      "Exact-match keyword list (case-insensitive): some, any, allowable, several, many, a lot of, a few, almost always, very nearly, nearly, about, close to, almost, approximate, ancillary, relevant, routine, common, generic, significant, flexible, expandable, typical, sufficient, adequate, appropriate, efficient, effective, proficient, reasonable, customary",
+      "Flag any occurrence of a listed word/phrase regardless of surrounding context"
+    ],
+    "example_violation": "THE SYSTEM SHALL respond within a reasonable time.",
+    "example_compliant": "THE SYSTEM SHALL respond within [200 ms].",
+    "disambiguation": "Keyword-list rule — apply as literal string match first, then confirm it is used in the vague sense (e.g. 'any' as a universal quantifier overlaps with INCOSE-032; if both apply, flag both)."
+  },
+  "INCOSE-008": {
+    "rule_name": "escape_clauses",
+    "description": "Avoid the inclusion of escape clauses that state vague conditions or possibilities, such as 'so far as is possible', 'as little as possible', 'where possible', 'as much as possible', 'if it should prove necessary', 'if necessary', 'to the extent necessary', 'as appropriate', 'as required', 'to the extent practical', and 'if practicable'.",
+    "trigger_criteria": [
+      "Exact-match keyword/phrase list (case-insensitive): so far as is possible, as little as possible, where possible, as much as possible, if it should prove necessary, if necessary, to the extent necessary, as appropriate, as required, to the extent practical, if practicable"
+    ],
+    "example_violation": "THE SYSTEM SHALL minimize latency where possible.",
+    "example_compliant": "THE SYSTEM SHALL limit latency to [50 ms] or less.",
+    "disambiguation": "Keyword-list rule, distinct from INCOSE-007 (vague quantifiers/adjectives) — this list is specifically conditional/possibility-hedging phrases."
+  },
+  "INCOSE-009": {
+    "rule_name": "open_ended_clauses",
+    "description": "Avoid open-ended, non-specific clauses such as 'including but not limited to', 'etc.' and 'and so on'.",
+    "trigger_criteria": [
+      "Exact-match keyword/phrase list (case-insensitive): including but not limited to, etc., and so on, and the like, among others"
+    ],
+    "example_violation": "THE SYSTEM SHALL log faults including but not limited to sensor faults.",
+    "example_compliant": "THE SYSTEM SHALL log EACH of the following faults: sensor fault, actuator fault, communication fault.",
+    "disambiguation": "Keyword-list rule; if the open-ended clause also hides an un-enumerated set, also consider INCOSE-022."
+  },
+  "INCOSE-010": {
+    "rule_name": "superfluous_infinitives",
+    "description": "Avoid the use of superfluous infinitives such as 'to be designed to', 'to be able to', 'to be capable of', 'to enable', 'to allow'.",
+    "trigger_criteria": [
+      "Exact-match keyword/phrase list (case-insensitive): to be designed to, to be able to, to be capable of, to enable, to allow, capable of, able to"
+    ],
+    "example_violation": "THE SYSTEM SHALL be capable of processing the value within [50 ms].",
+    "example_compliant": "THE SYSTEM SHALL process the value within [50 ms].",
+    "disambiguation": "Keyword-list rule — mechanical phrase match."
+  },
+  "INCOSE-011": {
+    "rule_name": "separate_clauses",
+    "description": "Use a separate clause for each condition or qualification.",
+    "trigger_criteria": [
+      "Two or more conditions/qualifications are combined into a single clause without separation (e.g. joined by commas or 'and' rather than presented as distinct clauses/sentences)"
+    ],
+    "example_violation": "IF VehSpd > 250 kph and the ignition is on, THEN THE SYSTEM SHALL...",
+    "example_compliant": "IF VehSpd > 250 kph, THEN THE SYSTEM SHALL... (separately) IF the ignition is on, THEN THE SYSTEM SHALL...",
+    "disambiguation": "Overlaps with INCOSE-019 (combinators) and INCOSE-028 (multiple conditions). Flag INCOSE-011 specifically when multiple conditions/qualifications share one clause; flag INCOSE-019 when a listed joining word is present; flag INCOSE-028 when one condition triggers a list of multiple actions. A single sentence can violate more than one of these simultaneously — check each independently."
+  },
+  "INCOSE-012": {
+    "rule_name": "correct_grammar",
+    "description": "Use correct grammar in the need or requirement statement.",
+    "trigger_criteria": [
+      "Subject-verb disagreement, incorrect tense, missing articles required by standard grammar, malformed sentence structure"
+    ],
+    "example_violation": "THE SYSTEM SHALL processes the value.",
+    "example_compliant": "THE SYSTEM SHALL process the value.",
+    "disambiguation": "Pure grammar only. Spelling errors go to INCOSE-013; punctuation to INCOSE-014."
+  },
+  "INCOSE-013": {
+    "rule_name": "correct_spelling",
+    "description": "Use correct spelling in the need or requirement statement.",
+    "trigger_criteria": [
+      "Any word is misspelled per standard dictionary/domain glossary"
+    ],
+    "example_violation": "THE SYSTEM SHALL proccess the value.",
+    "example_compliant": "THE SYSTEM SHALL process the value.",
+    "disambiguation": "Spelling only, not grammar (INCOSE-012) or terminology consistency (INCOSE-036)."
+  },
+  "INCOSE-014": {
+    "rule_name": "correct_punctuation",
+    "description": "Use correct punctuation in the need or requirement statement.",
+    "trigger_criteria": [
+      "Missing terminal period at end of statement",
+      "Missing/incorrect comma placement that changes or obscures meaning",
+      "Incorrect or inconsistent use of colons, semicolons, dashes, or bullet punctuation within a single requirement statement",
+      "Only flag punctuation marks that are objectively incorrect per standard punctuation rules — do not flag stylistic choices (e.g. use of a colon before a list) unless it creates ambiguity or is inconsistent with the rest of the document"
+    ],
+    "example_violation": "THE SYSTEM SHALL process the value within [50 ms]",
+    "example_compliant": "THE SYSTEM SHALL process the value within [50 ms].",
+    "disambiguation": "Mechanical punctuation check. Bracket/parenthesis usage for subordinate text is INCOSE-021, not this rule, even though brackets are a punctuation mark."
+  },
+  "INCOSE-015": {
+    "rule_name": "logical_expressions",
+    "description": "Use a defined convention to express logical expressions such as '[X AND Y]', '[X OR Y]', '[X XOR Y]', 'NOT [X OR Y]'.",
+    "trigger_criteria": [
+      "A logical/conditional relationship (AND/OR/NOT/XOR) is expressed in natural language (e.g. 'IF...THEN', 'when... and...', 'unless') instead of the bracketed logical-expression convention",
+      "A range condition is expressed as natural-language interval notation (e.g. '[0 kph, 250 kph]') instead of an explicit logical expression (e.g. '[VehSpd >= 0 kph AND VehSpd <= 250 kph]')"
+    ],
+    "example_violation": "IF VehSpd > 250 kph, THEN THE SYSTEM SHALL...",
+    "example_compliant": "WHILE [VehSpd > 250 kph], THE SYSTEM SHALL...",
+    "disambiguation": "This rule concerns the NOTATION of logical/conditional relationships. If the sentence also uses a prohibited combinator word (see INCOSE-019 list), flag both INCOSE-015 and INCOSE-019 — they are not mutually exclusive. Apply this rule whenever a conditional or range relationship exists, regardless of whether a combinator keyword from INCOSE-019 is also present."
+  },
+  "INCOSE-016": {
+    "rule_name": "use_of_not",
+    "description": "Avoid the use of 'not'.",
+    "trigger_criteria": [
+      "Exact-match keyword: 'not' (including contractions: isn't, aren't, doesn't, don't, won't, can't, shall not, is not, are not, etc.)"
+    ],
+    "example_violation": "IF VehSpd is not received within [50 ms], THEN...",
+    "example_compliant": "IF VehSpd is absent for [50 ms], THEN...",
+    "disambiguation": "Keyword-list rule — flag every occurrence of 'not' or its contracted forms."
+  },
+  "INCOSE-017": {
+    "rule_name": "use_of_oblique_symbol",
+    "description": "Avoid the use of the oblique ('/') symbol except in units, i.e., Km/hr, or fractions.",
+    "trigger_criteria": [
+      "'/' appears joining two words/options (e.g. 'pass/fail', 'and/or') rather than within a unit of measure (km/hr) or a numeric fraction"
+    ],
+    "example_violation": "THE SYSTEM SHALL report a pass/fail result.",
+    "example_compliant": "THE SYSTEM SHALL report a pass result OR a fail result.",
+    "disambiguation": "Only flag non-unit, non-fraction uses of '/'."
+  },
+  "INCOSE-018": {
+    "rule_name": "single_thought_sentence",
+    "description": "Write a single sentence that contains a single thought conditioned and qualified by relevant sub-clauses.",
+    "trigger_criteria": [
+      "Statement expresses two or more independent thoughts/requirements within one sentence (each could stand alone as a separate requirement)"
+    ],
+    "example_violation": "THE SYSTEM SHALL detect the fault and THE SYSTEM SHALL log the fault and THE SYSTEM SHALL notify the driver.",
+    "example_compliant": "THE SYSTEM SHALL detect the fault within [10 ms].",
+    "disambiguation": "Overlaps with INCOSE-028 (multiple actions from one condition) and INCOSE-030 (unique expression). Flag INCOSE-018 when independent thoughts/requirements are bundled together, regardless of whether they share a condition."
+  },
+  "INCOSE-019": {
+    "rule_name": "combinators",
+    "description": "Avoid words that join or combine clauses, such as 'and', 'or', 'then', 'unless', 'but', 'as well as', 'but also', 'however', 'whether', 'meanwhile', 'whereas', 'on the other hand', or 'otherwise'.",
+    "trigger_criteria": [
+      "Exact-match keyword list (case-insensitive): and, or, then, unless, but, as well as, but also, however, whether, meanwhile, whereas, on the other hand, otherwise, while, if...then",
+      "Flag every occurrence of a listed combinator word, including structural keywords like 'WHILE' and 'THEN' used to join condition and action clauses"
+    ],
+    "example_violation": "WHILE VehSpd is within [0 kph, 250 kph], THE SYSTEM SHALL process the value.",
+    "example_compliant": "[VehSpd within 0 kph to 250 kph]: THE SYSTEM SHALL process the value.",
+    "disambiguation": "Keyword-list rule, always check literal text for these words regardless of grammatical role. Co-occurs frequently with INCOSE-015 (natural-language conditionals) and INCOSE-011 (separate clauses) — flag all that apply independently rather than picking one."
+  },
+  "INCOSE-020": {
+    "rule_name": "purpose_phrases",
+    "description": "Avoid phrases that indicate the 'purpose of', 'intent of', or 'reason for' the need statement or requirement statement.",
+    "trigger_criteria": [
+      "Phrase list (case-insensitive): 'in order to', 'so that', 'the purpose of this requirement is', 'the intent is', 'the reason for', 'in an effort to', 'so as to'"
+    ],
+    "example_violation": "THE SYSTEM SHALL log the fault in order to support diagnostics.",
+    "example_compliant": "THE SYSTEM SHALL log the fault.",
+    "disambiguation": "Keyword-list rule for rationale-embedding phrases only."
+  },
+  "INCOSE-021": {
+    "rule_name": "parentheses",
+    "description": "Avoid parentheses and brackets containing subordinate text.",
+    "trigger_criteria": [
+      "Parentheses '( )' or square brackets '[ ]' are used to enclose subordinate/explanatory text within the requirement sentence",
+      "Do NOT flag brackets used strictly as the agreed value/range notation convention (e.g. '[50 ms]', '[0 kph, 250 kph]') if the project's style guide (INCOSE-039) designates brackets as the value-marking convention — flag only when brackets/parentheses enclose explanatory or subordinate prose, not a bounded numeric value or defined logical expression"
+    ],
+    "example_violation": "THE SYSTEM SHALL detect the fault within [10 ms] (this covers both high and low speed cases).",
+    "example_compliant": "THE SYSTEM SHALL detect the fault within [10 ms].",
+    "disambiguation": "IMPORTANT: this rule set's own convention (per INCOSE-015 examples) uses square brackets to denote values/logical expressions, e.g. '[50 ms]', '[X AND Y]'. Treat such bracketed numeric values or logical expressions as compliant notation, NOT a violation of INCOSE-021. Only flag brackets/parentheses that contain descriptive, subordinate, or explanatory clauses rather than a value or logical expression."
+  },
+  "INCOSE-022": {
+    "rule_name": "enumeration",
+    "description": "Enumerate sets explicitly instead of using a group noun to name the set."
+  , "trigger_criteria": [
+      "A group/collective noun is used to refer to a set of items instead of listing the items explicitly (e.g. 'sensors', 'faults', 'stakeholders' referring to an unspecified group)"
+    ],
+    "example_violation": "THE SYSTEM SHALL monitor the sensors.",
+    "example_compliant": "THE SYSTEM SHALL monitor EACH of the following: the speed sensor, the temperature sensor, the pressure sensor.",
+    "disambiguation": "Distinct from INCOSE-009 (open-ended clauses like 'etc.') — this rule applies even when no open-ended phrase is present, whenever a group noun stands in for an explicit list."
+  },
+  "INCOSE-023": {
+    "rule_name": "supporting_diagram_model_or_icd",
+    "description": "When a need or requirement is related to complex behavior, refer to a supporting diagram, model, or ICD.",
+    "trigger_criteria": [
+      "Statement describes multiple sequential/conditional actions, state transitions, or interface behavior (3+ distinct actions, or any state-machine-like transition) with no reference to a diagram, model, or ICD",
+      "Threshold: flag when the statement contains 2 or more distinct sub-actions/steps AND no diagram/model/ICD reference is present"
+    ],
+    "example_violation": "IF VehSpd > 250 kph, THEN THE SYSTEM SHALL detect the fault, react, set the DTC, and transition to the safe state. (no diagram reference)",
+    "example_compliant": "IF VehSpd > 250 kph, THEN THE SYSTEM SHALL execute the over-speed fault response per [Fault State Diagram FSD-01].",
+    "disambiguation": "Apply the 2+ sub-action threshold consistently across all requirements to avoid run-to-run variance in when this rule is judged to apply."
+  },
+  "INCOSE-024": {
+    "rule_name": "pronouns",
+    "description": "Avoid the use of personal and indefinite pronouns.",
+    "trigger_criteria": [
+      "Keyword list: it, its, they, them, their, this, that, these, those, one, someone, anyone, everybody (when used to refer back to an entity instead of restating the entity's name)"
+    ],
+    "example_violation": "THE SYSTEM SHALL detect the fault and log it.",
+    "example_compliant": "THE SYSTEM SHALL detect the fault and log the fault.",
+    "disambiguation": "Keyword-list rule; only flag when the pronoun substitutes for a named entity/subject, not grammatically required determiners."
+  },
+  "INCOSE-025": {
+    "rule_name": "headings",
+    "description": "Avoid relying on headings to support explanation or understanding of the need or requirement.",
+    "trigger_criteria": [
+      "Requirement statement is only understandable in context of a section heading (i.e. removing the heading changes or removes meaning); statement does not stand alone"
+    ],
+    "example_violation": "Heading: 'Over-speed handling' / Requirement: 'THE SYSTEM SHALL react within [10 ms].' (unclear what triggers reaction without the heading)",
+    "example_compliant": "THE SYSTEM SHALL react to the over-speed fault within [10 ms].",
+    "disambiguation": "Only applicable when requirement text is evaluated alongside its document structure/headings; if no heading context is provided, do not flag."
+  },
+  "INCOSE-026": {
+    "rule_name": "absolutes",
+    "description": "Avoid using unachievable absolutes such as 100% reliability, 100% availability, all, every, always, never, etc.",
+    "trigger_criteria": [
+      "Keyword list: 100%, all, every, always, never, none, completely, totally, fully, entirely, guaranteed"
+    ],
+    "example_violation": "THE SYSTEM SHALL never fail to detect the fault.",
+    "example_compliant": "THE SYSTEM SHALL detect the fault with a probability of detection of [99.9%] or greater.",
+    "disambiguation": "Overlaps with INCOSE-032 ('each' vs 'all'/'any'). If 'all' is used for universal quantification of a defined, achievable set, INCOSE-032 applies (use 'each' instead); if 'all'/'always'/'never' implies an unachievable 100% absolute claim, INCOSE-026 applies. Both can apply to the same word depending on context — assess achievability to decide."
+  },
+  "INCOSE-027": {
+    "rule_name": "explicit_conditions",
+    "description": "State conditions' applicability explicitly instead of leaving applicability to be inferred from the context.",
+    "trigger_criteria": [
+      "A condition or scope (operating mode, system state, applicable configuration) is implied but not explicitly stated in the requirement itself"
+    ],
+    "example_violation": "THE SYSTEM SHALL process the value within [50 ms]. (applicable only in Drive mode, but not stated)",
+    "example_compliant": "WHILE in Drive mode, THE SYSTEM SHALL process the value within [50 ms].",
+    "disambiguation": "Only flag when there is evidence (from other requirements/context) that an implicit condition exists but is omitted; do not flag requirements that are genuinely unconditional."
+  },
+  "INCOSE-028": {
+    "rule_name": "multiple_conditions",
+    "description": "Express the propositional nature of a condition explicitly for a single action instead of giving lists of actions for a specific condition.",
+    "trigger_criteria": [
+      "A single condition/trigger is followed by a bulleted or dashed list of 2+ separate actions"
+    ],
+    "example_violation": "IF VehSpd > 250 kph, THEN THE SYSTEM SHALL: - detect the fault - react - set the DTC - transition to safe state.",
+    "example_compliant": "IF VehSpd > 250 kph, THEN THE SYSTEM SHALL detect the over-speed fault within [10 ms]. (each remaining action stated as its own separate requirement)",
+    "disambiguation": "Flag whenever one condition clause is followed by a list/enumeration of 2+ actions, regardless of formatting (bullets, dashes, or comma-separated). This commonly co-occurs with INCOSE-018 (single thought) and INCOSE-023 (needs diagram) — flag all three independently when applicable."
+  },
+  "INCOSE-029": {
+    "rule_name": "classification",
+    "description": "Classify needs and requirements according to the aspects of the problem or system it addresses.",
+    "trigger_criteria": [
+      "Requirement has no classification/category tag (e.g. functional, performance, interface, safety) in the associated metadata/requirement set"
+    ],
+    "example_violation": "Requirement record with no 'Type' or 'Category' field populated.",
+    "example_compliant": "Requirement record tagged Category: Functional - Fault Detection.",
+    "disambiguation": "This is a metadata/artifact-set check, not a sentence-wording check; evaluate against the requirement record, not just the statement text."
+  },
+  "INCOSE-030": {
+    "rule_name": "unique_expression",
+    "description": "Express each need and requirement once and only once.",
+    "trigger_criteria": [
+      "The same requirement content (condition + action) appears more than once across the requirement set, worded identically or as a near-paraphrase"
+    ],
+    "example_violation": "SYS_REQ_0010 and SYS_REQ_0044 both state the system shall detect over-speed within 10 ms.",
+    "example_compliant": "The over-speed detection requirement appears exactly once in the set, referenced elsewhere by ID rather than restated.",
+    "disambiguation": "This is a cross-requirement duplication check; requires comparing against the full requirement set, not evaluable from a single requirement in isolation."
+  },
+  "INCOSE-031": {
+    "rule_name": "solution_free",
+    "description": "Avoid stating implementation in a need statement or requirement statement unless there is rationale for constraining the design.",
+    "trigger_criteria": [
+      "Statement specifies a particular implementation, mechanism, or design solution (specific code, specific component, specific algorithm/technology) rather than the required behavior/outcome, with no stated rationale for the design constraint"
+    ],
+    "example_violation": "THE SYSTEM SHALL set DTC_101_VSPD_OOR_HI and transition to the safe state. (implementation-specific code and mechanism, no rationale given)",
+    "example_compliant": "THE SYSTEM SHALL indicate the over-speed fault condition per [Diagnostic Trouble Code Dictionary] and enter the defined safe state, per design constraint [DC-07: legacy diagnostic tool compatibility].",
+    "disambiguation": "Only flag when a specific implementation/solution detail is given AND no rationale/justification for that constraint is present in the requirement or its linked rationale."
+  },
+  "INCOSE-032": {
+    "rule_name": "universal_qualification",
+    "description": "Use 'each' instead of 'all', 'any', or 'both' when universal quantification is intended.",
+    "trigger_criteria": [
+      "Exact-match keyword list: 'all', 'any', 'both' used where universal quantification (i.e., 'for every member of the set') is intended",
+      "Do not flag 'any' when used in a non-universal sense (e.g. as part of a listed vague term already covered by INCOSE-007, or in a negative existential like 'without any errors' where it does not mean universal quantification)"
+    ],
+    "example_violation": "THE SYSTEM SHALL process all sensor inputs within [50 ms].",
+    "example_compliant": "THE SYSTEM SHALL process EACH sensor input within [50 ms].",
+    "disambiguation": "Overlaps with INCOSE-026 (absolutes). Apply INCOSE-032 whenever 'all'/'any'/'both' is used for universal quantification, regardless of whether the claim is also 'unachievable' (INCOSE-026 is about achievability of the absolute, INCOSE-032 is purely about word choice) — both rules can and should be flagged together in that case."
+  },
+  "INCOSE-033": {
+    "rule_name": "range_of_values",
+    "description": "Define each quantity with a range of values appropriate to the entity to which the quantity applies and against which the entity will be verified or validated.",
+    "trigger_criteria": [
+      "A quantity is given as a single exact value (e.g. 'within 10 ms', '250 kph') where a tolerance/range would be appropriate for verification, and no range/tolerance is stated"
+    ],
+    "example_violation": "THE SYSTEM SHALL detect the fault within [10 ms].",
+    "example_compliant": "THE SYSTEM SHALL detect the fault within [10 ms, 15 ms].",
+    "disambiguation": "Flag single-point numeric values used as performance thresholds/timings. Do not flag values that are inherently boundary/limit values by design intent (e.g. a hard physical limit) — but for this rule set, treat all bare single-value timing/threshold numbers as violations for consistency, since no exception mechanism is defined."
+  },
+  "INCOSE-034": {
+    "rule_name": "measurable_performance",
+    "description": "Provide specific measurable performance targets appropriate to the entity to which the need or requirement is stated and against which the entity will be verified to meet.",
+    "trigger_criteria": [
+      "Requirement describes a performance expectation with no measurable/verifiable target (no number, threshold, or objective pass/fail criterion)"
+    ],
+    "example_violation": "THE SYSTEM SHALL respond quickly to the fault.",
+    "example_compliant": "THE SYSTEM SHALL respond to the fault within [10 ms, 15 ms].",
+    "disambiguation": "Distinct from INCOSE-033: INCOSE-034 flags the total absence of a measurable target; INCOSE-033 flags a measurable target that is present but given as a single value instead of a range."
+  },
+  "INCOSE-035": {
+    "rule_name": "temporal_dependencies",
+    "description": "Define temporal dependencies explicitly instead of using indefinite temporal keywords such as 'eventually', 'until', 'before', 'after', 'as', 'once', 'earliest', 'latest', 'instantaneous', 'simultaneous', and 'at last'.",
+    "trigger_criteria": [
+      "Exact-match keyword list (case-insensitive): eventually, until, before, after, as, once, earliest, latest, instantaneous, simultaneous, at last",
+      "Only flag when the keyword defines an indefinite temporal relationship without an explicit, quantified time value attached"
+    ],
+    "example_violation": "THE SYSTEM SHALL transition to the safe state after the fault is detected.",
+    "example_compliant": "THE SYSTEM SHALL transition to the safe state within [10 ms] of fault detection.",
+    "disambiguation": "Keyword-list rule; do not flag the keyword if it is immediately quantified with an explicit bound (e.g. 'after [10 ms]' is still worth flagging for the word 'after' itself per strict list-matching, to keep detection consistent run-to-run — apply the keyword list literally)."
+  },
+  "INCOSE-036": {
+    "rule_name": "consistent_terms_and_units",
+    "description": "Ensure each term and unit of measure used throughout need and requirement sets as well as associated models and other SE artefacts developed across the lifecycle are consistent with the project's defined ontology.",
+    "trigger_criteria": [
+      "Same concept is referred to by different terms across the requirement set (e.g. 'VehSpd' in one requirement, 'vehicle speed' or 'VSPD' in another)",
+      "Same unit of measure is expressed inconsistently across the set (e.g. 'kph' vs 'km/h' vs 'mph')"
+    ],
+    "example_violation": "SYS_REQ_0001 uses 'VehSpd'; SYS_REQ_0012 uses 'VSPD' for the same signal.",
+    "example_compliant": "The term 'VehSpd' and unit 'kph' are used consistently across the entire requirement set.",
+    "disambiguation": "Cross-requirement consistency check; requires comparing against the full set, not evaluable from a single requirement in isolation. Distinct from INCOSE-004 (definition existence) and INCOSE-038 (abbreviation usage itself)."
+  },
+  "INCOSE-037": {
+    "rule_name": "acronyms",
+    "description": "If acronyms are used, they must be consistent throughout need and requirement sets as well as associated models and other SE artefacts developed across the lifecycle.",
+    "trigger_criteria": [
+      "The same acronym is used to mean different things in different requirements, OR the same concept uses different acronyms/spellings across the set"
+    ],
+    "example_violation": "DTC is used for 'Diagnostic Trouble Code' in one requirement and 'Data Transfer Channel' in another.",
+    "example_compliant": "DTC consistently means 'Diagnostic Trouble Code' throughout the set.",
+    "disambiguation": "This is about acronym CONSISTENCY across the set (cross-requirement check); INCOSE-038 is about acronym/abbreviation PRESENCE within a single statement, regardless of consistency. Both can apply to the same acronym."
+  },
+  "INCOSE-038": {
+    "rule_name": "abbreviations",
+    "description": "Avoid the use of abbreviations in needs and requirement statements as well as associated models and other SE lifecycle artefacts.",
+    "trigger_criteria": [
+      "Any shortened form of a word/term appears in the statement: acronyms (DTC), initialisms, contracted signal/variable names (VehSpd, VSPD), unit abbreviations (kph, ms, kg) not spelled out on first use",
+      "Flag every abbreviation occurrence, including unit abbreviations, unless the project style guide explicitly exempts units of measure"
+    ],
+    "example_violation": "THE SYSTEM SHALL process the VehSpd value within [50 ms].",
+    "example_compliant": "THE SYSTEM SHALL process the vehicle speed value within [50 milliseconds].",
+    "disambiguation": "Apply broadly and literally: this rule should fire on essentially every requirement that uses signal-name shorthand or unit abbreviations, since none of the sample requirements spell these out in full. Treat unit abbreviations (kph, ms) as in-scope violations for consistency, unless told otherwise by the project style guide (INCOSE-039)."
+  },
+  "INCOSE-039": {
+    "rule_name": "style_guide",
+    "description": "Use a project-wide style guide for individual need statements and requirement statements.",
+    "trigger_criteria": [
+      "No project style guide is referenced/available, or the requirement statement deviates from a documented project style guide where one exists"
+    ],
+    "example_violation": "No style guide document is referenced anywhere in the requirement set.",
+    "example_compliant": "Requirement set references [Project Requirements Style Guide v2.1] and conforms to it.",
+    "disambiguation": "Artifact-set-level check; if no style guide is provided as part of the input, flag once per set rather than re-deriving per requirement, to avoid inconsistent per-row flagging."
+  },
+  "INCOSE-040": {
+    "rule_name": "decimal_format",
+    "description": "Use a consistent format and number of significant digits for the specification of decimal numbers.",
+    "trigger_criteria": [
+      "Decimal numbers in the requirement set use inconsistent formats (e.g. '0.5' vs '.5', or varying numbers of significant digits for comparable quantities)"
+    ],
+    "example_violation": "SYS_REQ_0005 states '0.50 kph'; SYS_REQ_0009 states '.5 kph'.",
+    "example_compliant": "All decimal speed values in the set use two significant digits after the decimal point consistently.",
+    "disambiguation": "Cross-requirement consistency check; only evaluable when comparing multiple requirements containing decimals. Do not flag a single requirement with no decimal numbers."
+  },
+  "INCOSE-041": {
+    "rule_name": "related_needs_and_requirements",
+    "description": "Group related needs and requirements together.",
+    "trigger_criteria": [
+      "Requirements addressing the same feature/function are not grouped/sectioned together in the requirement set structure"
+    ],
+    "example_violation": "The four VehSpd-related requirements (SYS_REQ_0001-0004) are interspersed with unrelated braking requirements rather than grouped.",
+    "example_compliant": "All VehSpd-related requirements are grouped under a single 'Vehicle Speed Monitoring' section.",
+    "disambiguation": "Artifact/document-structure check, not a single-statement wording check."
+  },
+  "INCOSE-042": {
+    "rule_name": "structured_sets",
+    "description": "Conform to a defined structure or template for organizing sets of needs and requirements.",
+    "trigger_criteria": [
+      "The requirement set as a whole does not follow a consistent, defined organizational template (e.g. inconsistent ID numbering, missing standard fields, inconsistent section structure across the document)"
+    ],
+    "example_violation": "Some requirements have Rationale and Verification Method fields populated; others in the same set do not.",
+    "example_compliant": "Every requirement in the set follows the same template: ID, Statement, Rationale, Verification Method, Trace Link.",
+    "disambiguation": "Set-level structural check, evaluated once per requirement set/document rather than per individual statement."
+  }
+}

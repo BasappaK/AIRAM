@@ -1,6 +1,6 @@
-# AARAM - AI-Assisted Requirement Analysis & Management ✦
+# AIRAM - AI-Assisted Requirement Analysis & Management ✦
 
-AARAM is an agentic automotive requirements analysis and compliance validation tool. It provides:
+AIRAM is an agentic automotive requirements analysis and compliance validation tool. It provides:
 1. **Requirements Compliance & Quality Auditor**: Evaluates software requirements (such as SWE.1 HLR or SWE.2 LLR) against strict guidelines (e.g. INCOSE, ASPICE rules) using LLMs and gives audit statuses (PASS / REVIEW) along with suggested rewrites if violations are found.
 2. **Requirements Traceability Analyzer**: Evaluates tracing compliance between Low-Level Software Requirements (SWE.2) and High-Level System Requirements (SWE.1).
 3. **RAG (Retrieval-Augmented Generation) Ingestion**: Supports progressive database segmenting and indexing of guidelines documents (such as PDF files, Excel lists, CSVs, TXTs) using layout-aware `pymupdf` and `pymupdf4llm` extraction with configurable target collections and page ranges.
