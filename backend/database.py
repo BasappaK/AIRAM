@@ -15,7 +15,8 @@ if not os.path.exists(DATABASE_PATH) and os.path.exists(OLD_DATABASE_PATH):
         print(f"[database] Failed to migrate database: {e}")
 
 def get_connection():
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=20.0)
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -53,25 +54,47 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             type TEXT NOT NULL, -- 'quality', 'traceability', 'combined'
             status TEXT NOT NULL, -- 'running', 'paused', 'stopped', 'completed'
-            minimized INTEGER DEFAULT 0 -- 0 = normal, 1 = minimized
+            minimized INTEGER DEFAULT 0, -- 0 = normal, 1 = minimized
+            current_row INTEGER DEFAULT 0,
+            total_rows INTEGER DEFAULT 0
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE execution_runs ADD COLUMN current_row INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE execution_runs ADD COLUMN total_rows INTEGER DEFAULT 0")
+    except Exception:
+        pass
     
     # Execution Results Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS execution_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
-            req_id TEXT NOT NULL,
-            input_req TEXT NOT NULL,
+            req_id TEXT,
+            input_req TEXT,
             status TEXT NOT NULL, -- 'PASS', 'FAIL', 'REVIEW'
             failed_rule TEXT,
             rationale TEXT,
             corrected_req TEXT,
             swe1_id TEXT, -- populated for SWE.2 traceability
+            swe1_text TEXT, -- populated for SWE.2 traceability
+            category TEXT, -- 'swe1', 'swe2', 'traceability'
             FOREIGN KEY (run_id) REFERENCES execution_runs(run_id)
         )
     """)
+    
+    # Safely migrate existing databases
+    try:
+        cursor.execute("ALTER TABLE execution_results ADD COLUMN swe1_text TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE execution_results ADD COLUMN category TEXT")
+    except Exception:
+        pass
     
     conn.commit()
     conn.close()
@@ -172,6 +195,48 @@ def update_execution_status(run_id: str, status: str):
     conn.commit()
     conn.close()
 
+def update_execution_progress(run_id: str, current_row: int, total_rows: int, status: str = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    if status:
+        cursor.execute(
+            "UPDATE execution_runs SET current_row = ?, total_rows = ?, status = ? WHERE run_id = ?",
+            (current_row, total_rows, status, run_id)
+        )
+    else:
+        cursor.execute(
+            "UPDATE execution_runs SET current_row = ?, total_rows = ? WHERE run_id = ?",
+            (current_row, total_rows, run_id)
+        )
+    conn.commit()
+    conn.close()
+
+def get_execution_run(run_id: str) -> dict:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM execution_runs WHERE run_id = ?", (run_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {
+            "run_id": row["run_id"],
+            "timestamp": row["timestamp"],
+            "type": row["type"],
+            "status": row["status"],
+            "minimized": row["minimized"],
+            "current_row": row["current_row"],
+            "total_rows": row["total_rows"]
+        }
+    return None
+
+def get_execution_status(run_id: str) -> str:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT status FROM execution_runs WHERE run_id = ?", (run_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row["status"] if row else None
+
 def update_execution_minimized(run_id: str, minimized: int):
     conn = get_connection()
     cursor = conn.cursor()
@@ -179,35 +244,60 @@ def update_execution_minimized(run_id: str, minimized: int):
     conn.commit()
     conn.close()
 
-def save_execution_result(run_id: str, req_id: str, input_req: str, status: str, failed_rule: str, rationale: str, corrected_req: str, swe1_id: str = None):
+def save_execution_result(run_id: str, req_id: str, input_req: str, status: str, failed_rule: str, rationale: str, corrected_req: str, swe1_id: str = None, category: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id)
+        "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id, category)
     )
     conn.commit()
     conn.close()
 
-def create_placeholder_result(run_id: str, req_id: str, input_req: str) -> int:
+def create_placeholder_result(run_id: str, req_id: str, input_req: str, category: str = None) -> int:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (run_id, req_id, input_req, "PROCESSING", None, "Analyzing requirement... waiting for LLM response", None, None)
+        "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id, swe1_text, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (run_id, req_id, input_req, "PROCESSING", None, "Analyzing requirement... waiting for LLM response", None, None, None, category)
     )
     last_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return last_id
 
-def update_execution_result_by_id(row_id: int, status: str, failed_rule: str, rationale: str, corrected_req: str, swe1_id: str = None):
+def update_execution_result_by_id(
+    row_id: int, 
+    status: str, 
+    failed_rule: str, 
+    rationale: str, 
+    corrected_req: str, 
+    swe1_id: str = None, 
+    swe1_text: str = None,
+    req_id: str = None,
+    input_req: str = None,
+    category: str = None
+):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE execution_results SET status = ?, failed_rule = ?, rationale = ?, corrected_req = ?, swe1_id = ? WHERE id = ?",
-        (status, failed_rule, rationale, corrected_req, swe1_id, row_id)
-    )
+    
+    params = [status, failed_rule, rationale, corrected_req, swe1_id, swe1_text]
+    sql = "UPDATE execution_results SET status = ?, failed_rule = ?, rationale = ?, corrected_req = ?, swe1_id = ?, swe1_text = ?"
+    
+    if req_id is not None:
+        sql += ", req_id = ?"
+        params.append(req_id)
+    if input_req is not None:
+        sql += ", input_req = ?"
+        params.append(input_req)
+    if category is not None:
+        sql += ", category = ?"
+        params.append(category)
+        
+    sql += " WHERE id = ?"
+    params.append(row_id)
+    
+    cursor.execute(sql, tuple(params))
     conn.commit()
     conn.close()
 

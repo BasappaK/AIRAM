@@ -48,10 +48,10 @@ import { ApiService } from '../../services/api.service';
               <label class="form-label">Select Analysis Actions</label>
               <div class="checkbox-group">
                 <label class="checkbox-lbl">
-                  <input type="checkbox" [(ngModel)]="actions.analyse"> Quality Analysis
+                  <input type="checkbox" [(ngModel)]="actions.analyse" [disabled]="actions.correct"> Quality Analysis
                 </label>
                 <label class="checkbox-lbl">
-                  <input type="checkbox" [(ngModel)]="actions.correct"> Quality Correction
+                  <input type="checkbox" [(ngModel)]="actions.correct" (ngModelChange)="onCorrectionToggle($event)"> Quality Correction
                 </label>
                 <label class="checkbox-lbl">
                   <input type="checkbox" [(ngModel)]="actions.trace"> Traceability Analysis (SWE.2 to SWE.1)
@@ -184,30 +184,57 @@ import { ApiService } from '../../services/api.service';
         <div class="table-container">
           <table>
             <thead>
-              <tr>
+              <tr *ngIf="!isTraceabilityRun">
                 <th>ID</th>
                 <th>Requirement</th>
                 <th>Status</th>
-                <th>{{ isTraceabilityRun ? 'Traced SWE.1 HLR ID' : 'Violated Rule' }}</th>
+                <th>Violated Rule</th>
                 <th>Rationale / Reasoning</th>
                 <th *ngIf="hasCorrections()">Corrected Requirement</th>
               </tr>
+              <tr *ngIf="isTraceabilityRun">
+                <th>SWE.1 ID</th>
+                <th>SWE.1 Requirement</th>
+                <th>SWE.2 ID</th>
+                <th>SWE.2 Requirement</th>
+                <th>Status</th>
+                <th>Rationale / Reasoning</th>
+              </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let row of results | slice:(currentPage - 1) * pageSize : currentPage * pageSize">
-                <td style="font-weight: 600; white-space: nowrap;">{{ row.req_id }}</td>
-                <td style="max-width: 300px;">{{ row.input_req }}</td>
-                <td>
-                  <span class="badge" [class.badge-pass]="row.status === 'PASS'" [class.badge-review]="row.status === 'REVIEW' || row.status === 'FAIL'">
-                    {{ row.status === 'FAIL' ? 'REVIEW' : row.status }}
-                  </span>
-                </td>
-                <td style="font-weight: 500; font-family: monospace;">{{ row.failed_rule || 'N/A' }}</td>
-                <td style="color: var(--text-secondary); font-size: 0.8rem;">{{ row.rationale }}</td>
-                <td *ngIf="hasCorrections()" style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px;">
-                  {{ row.corrected_req || '-' }}
-                </td>
-              </tr>
+              <ng-container *ngFor="let row of results | slice:(currentPage - 1) * pageSize : currentPage * pageSize">
+                <!-- Quality Analysis View -->
+                <tr *ngIf="!isTraceabilityRun">
+                  <td style="font-weight: 600; white-space: nowrap;">{{ row.req_id }}</td>
+                  <td style="max-width: 300px;">{{ row.input_req }}</td>
+                  <td>
+                    <span class="badge" [class.badge-pass]="row.status === 'PASS'" [class.badge-review]="row.status === 'REVIEW' || row.status === 'FAIL'">
+                      {{ row.status === 'FAIL' ? 'REVIEW' : row.status }}
+                    </span>
+                  </td>
+                  <td style="font-weight: 500; font-family: monospace;">{{ row.failed_rule || 'N/A' }}</td>
+                  <td style="color: var(--text-secondary); font-size: 0.8rem;">{{ row.rationale }}</td>
+                  <td *ngIf="hasCorrections()" style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px;">
+                    {{ row.corrected_req || '-' }}
+                  </td>
+                </tr>
+                
+                <!-- Traceability Matrix View -->
+                <ng-container *ngIf="isTraceabilityRun">
+                  <tr *ngFor="let swe2 of row.parsed_swe2_list; let i = index">
+                    <td *ngIf="i === 0" [attr.rowspan]="row.parsed_swe2_list.length" style="font-weight: 600; white-space: nowrap; color: #0369a1; border-bottom: 1px solid var(--border-color); vertical-align: middle;">{{ row.swe1_id || '-' }}</td>
+                    <td *ngIf="i === 0" [attr.rowspan]="row.parsed_swe2_list.length" style="max-width: 250px; font-size: 0.85rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); vertical-align: middle;">{{ row.swe1_text || '-' }}</td>
+                    <td style="font-weight: 600; max-width: 150px; font-size: 0.85rem; white-space: pre-wrap; color: #15803d; border-bottom: 1px solid var(--border-color);">{{ swe2.id }}</td>
+                    <td style="max-width: 350px; font-size: 0.85rem; white-space: pre-wrap; border-bottom: 1px solid var(--border-color);">{{ swe2.text }}</td>
+                    <td *ngIf="i === 0" [attr.rowspan]="row.parsed_swe2_list.length" style="border-bottom: 1px solid var(--border-color); vertical-align: middle;">
+                      <span class="badge" [class.badge-pass]="row.status === 'PASS'" [class.badge-review]="row.status === 'REVIEW' || row.status === 'FAIL'">
+                        {{ row.status }}
+                      </span>
+                    </td>
+                    <td *ngIf="i === 0" [attr.rowspan]="row.parsed_swe2_list.length" style="color: var(--text-secondary); font-size: 0.8rem; border-bottom: 1px solid var(--border-color); vertical-align: middle;">{{ row.rationale }}</td>
+                  </tr>
+                </ng-container>
+              </ng-container>
             </tbody>
           </table>
         </div>
@@ -733,8 +760,15 @@ JSON Schema:
     }
   }
 
+  onCorrectionToggle(checked: boolean) {
+    if (checked) {
+      // Correction requires analysis — auto-enable it
+      this.actions.analyse = true;
+    }
+  }
+
   startRun() {
-    if (this.rulesMode === 'strict' && this.selectedGuidelineIds.length === 0) {
+    if ((this.actions.analyse || this.actions.correct) && this.rulesMode === 'strict' && this.selectedGuidelineIds.length === 0) {
       alert('⚠️ Please select at least one strict guideline document from the dropdown before starting execution.');
       return;
     }
@@ -796,7 +830,12 @@ JSON Schema:
           // Fetch intermediate results periodically so user sees requirements committing in real time
           this.apiService.getRunResults(this.activeRunId).subscribe({
             next: (res) => {
-              this.results = res;
+              this.results = res.map((r: any) => {
+                if (this.isTraceabilityRun && !r.parsed_swe2_list) {
+                  r.parsed_swe2_list = this.getParsedSwe2List(r);
+                }
+                return r;
+              });
               this.cdr.detectChanges();
             }
           });
@@ -864,10 +903,45 @@ JSON Schema:
     
     this.apiService.getRunResults(runId).subscribe({
       next: (res) => {
-        this.results = res;
+        this.results = res.map((r: any) => {
+          if (this.isTraceabilityRun && !r.parsed_swe2_list) {
+            r.parsed_swe2_list = this.getParsedSwe2List(r);
+          }
+          return r;
+        });
         this.cdr.detectChanges();
       }
     });
+  }
+  getParsedSwe2List(row: any): any[] {
+    if (!row.req_id || row.req_id === '-' || row.req_id.trim() === '') {
+      return [{ id: '-', text: row.input_req || '-' }];
+    }
+    
+    const ids = row.req_id.split(',').map((id: string) => id.trim());
+    
+    // Attempt to parse input_req based on "• ID: text" format
+    const texts = row.input_req ? row.input_req.split('\n').map((t: string) => t.trim()) : [];
+    
+    const parsedList = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      let text = '-';
+      
+      // Try to find the matching text block by ID
+      const prefix = `• ${id}:`;
+      const match = texts.find((t: string) => t.startsWith(prefix));
+      if (match) {
+        text = match.substring(prefix.length).trim();
+      } else if (texts[i]) {
+        // Fallback: just use the line corresponding to the index
+        text = texts[i].replace(/^•\s*[A-Za-z0-9_\-\.]+:\s*/, '').trim();
+      }
+      
+      parsedList.push({ id, text });
+    }
+    
+    return parsedList.length > 0 ? parsedList : [{ id: '-', text: row.input_req || '-' }];
   }
 
 

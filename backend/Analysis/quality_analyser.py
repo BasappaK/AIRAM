@@ -25,7 +25,7 @@ def _add_script_run_ctx_to_thread(thread, ctx):
         pass
 
 
-class _StreamlitThreadPoolExecutor(ThreadPoolExecutor):
+class ThreadPoolExecutor(ThreadPoolExecutor):
     """ThreadPoolExecutor that propagates Streamlit's ScriptRunContext to worker threads."""
 
     def __init__(self, *args, **kwargs):
@@ -160,6 +160,46 @@ def load_json_rules() -> dict:
         except Exception as e:
             print(f"[quality_analyser] Error loading rules.json: {e}", flush=True)
     return {}
+
+def get_failed_rule_definitions(failed_rule_names: list, rules_dict: dict) -> str:
+    """Look up the full definition of each broken rule from the loaded rules dict.
+    
+    Searches through flat and multi-file rule layouts to find matching rule
+    definitions by name/ID, returning their full JSON text for injection
+    into the correction prompt.
+    """
+    if not failed_rule_names or not rules_dict:
+        return ""
+    
+    matched = {}
+    for rule_name in failed_rule_names:
+        rule_lower = rule_name.strip().lower()
+        if not rule_lower:
+            continue
+        # Search through the rules dict (handles both flat and multi-file layouts)
+        for key, value in rules_dict.items():
+            if isinstance(value, dict):
+                # Multi-file: value is a nested dict of rules
+                for sub_key, sub_val in value.items():
+                    if rule_lower in sub_key.lower() or sub_key.lower() in rule_lower:
+                        matched[rule_name] = {sub_key: sub_val}
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        item_name = str(item.get("name", item.get("id", item.get("rule", "")))).lower()
+                        if rule_lower in item_name or item_name in rule_lower:
+                            matched[rule_name] = item
+            else:
+                if rule_lower in key.lower() or key.lower() in rule_lower:
+                    matched[rule_name] = value
+    
+    if not matched:
+        return f"Failed rules: {', '.join(failed_rule_names)}"
+    
+    parts = []
+    for name, defn in matched.items():
+        parts.append(f"--- Violated Rule: {name} ---\n{json.dumps(defn, indent=2)}")
+    return "\n\n".join(parts)
 
 def analyze_single_requirement(
     index, r, llm, rag, rag_context=None, selected_collections=None, 
@@ -411,7 +451,7 @@ def analyze_batch(batch_items, llm, rag, selected_collections=None, is_strict_js
     except Exception as e:
         # Fallback to single parallel processing
         fallback_results = {}
-        with _StreamlitThreadPoolExecutor(max_workers=min(10, len(batch_items))) as ex:
+        with ThreadPoolExecutor(max_workers=min(10, len(batch_items))) as ex:
             fs = {ex.submit(analyze_single_requirement, idx, r, llm, rag, rag_contexts[i] if rag_contexts else None, selected_collections, is_strict_json): idx for i, (idx, r) in enumerate(batch_items)}
             for f in as_completed(fs):
                 idx = fs[f]
@@ -448,7 +488,7 @@ def _recheck_passed_requirements(analysis_data, requirements, llm, rag, selected
     recheck_total = len(passed_indices)
     recheck_completed = 0
     
-    with _StreamlitThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {
             executor.submit(
                 analyze_single_requirement, 
@@ -504,7 +544,7 @@ def analyze_requirements_batch(requirements: List[Requirement], llm, progress_ca
             return analyze_batch(batch, llm, rag, selected_collections, is_strict_json)
         except Exception:
             fallback_results = {}
-            with _StreamlitThreadPoolExecutor(max_workers=min(10, len(batch))) as ex:
+            with ThreadPoolExecutor(max_workers=min(10, len(batch))) as ex:
                 fs = {ex.submit(analyze_single_requirement, idx, r, llm, rag, None, selected_collections, is_strict_json): idx for idx, r in batch}
                 for f in as_completed(fs):
                     idx = fs[f]
@@ -512,7 +552,7 @@ def analyze_requirements_batch(requirements: List[Requirement], llm, progress_ca
                     fallback_results[idx] = res
             return fallback_results
 
-    with _StreamlitThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {executor.submit(process_batch, b): b for b in batches}
         
         completed_count = 0
@@ -557,7 +597,7 @@ def analyze_requirements(requirements: List[Requirement], llm=None, progress_cal
             pass
 
     analysis_data = [None] * total
-    with _StreamlitThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {
             executor.submit(analyze_single_requirement, i, r, llm, rag, rag_contexts[i], selected_collections, is_strict_json): i 
             for i, r in enumerate(requirements)
@@ -621,10 +661,27 @@ def correct_single_requirement(index, r, llm, rag, rag_context=None, selected_co
             )
             
         
+        # Build enriched user message with analysis feedback
+        user_content = f"Full Requirement Context: \"{current_text}\""
+        
+        if failed_rule:
+            user_content += f"\n\nFailed Rules: {failed_rule}"
+        if rationale:
+            user_content += f"\nAnalysis Rationale: {rationale}"
+        
+        # When strict JSON rules are active, fetch and inject the full rule definitions
+        rules = load_json_rules()
+        if rules and failed_rule:
+            rule_names = [r.strip() for r in failed_rule.split(",") if r.strip()]
+            rule_defs = get_failed_rule_definitions(rule_names, rules)
+            if rule_defs:
+                user_content += f"\n\nFull Rule Definitions for violated rules:\n{rule_defs}"
+        
+        user_content += "\n\nCorrect the requirement to satisfy ALL the violated rules listed above."
             
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Full Requirement Context: \"{current_text}\""}
+            {"role": "user", "content": user_content}
         ]
         
         response = llm.get_response(messages, stream=False, model=getattr(llm, "analysis_model_name", getattr(llm, "model_name", "nvidia/llama-3.3-nemotron-super-49b-v1.5")))
@@ -758,7 +815,7 @@ def correct_batch(batch_items, llm, rag, selected_collections=None):
     except Exception as e:
         # Fallback to single parallel processing
         fallback_results = {}
-        with _StreamlitThreadPoolExecutor(max_workers=min(10, len(batch_items))) as ex:
+        with ThreadPoolExecutor(max_workers=min(10, len(batch_items))) as ex:
             fs = {ex.submit(correct_single_requirement, idx, r, llm, rag, rag_contexts[i] if rag_contexts else None, selected_collections): idx for i, (idx, r) in enumerate(batch_items)}
             for f in as_completed(fs):
                 idx = fs[f]
@@ -804,7 +861,7 @@ def correct_requirements_batch(requirements: List[Requirement], llm, progress_ca
             return correct_batch(batch, llm, rag, selected_collections)
         except Exception:
             fallback_results = {}
-            with _StreamlitThreadPoolExecutor(max_workers=min(10, len(batch))) as ex:
+            with ThreadPoolExecutor(max_workers=min(10, len(batch))) as ex:
                 fs = {ex.submit(correct_single_requirement, idx, r, llm, rag, selected_collections=selected_collections): idx for idx, r in batch}
                 for f in as_completed(fs):
                     idx = fs[f]
@@ -812,7 +869,7 @@ def correct_requirements_batch(requirements: List[Requirement], llm, progress_ca
                     fallback_results[idx] = (r_obj, action_part, corrected_action, full_corrected)
             return fallback_results
 
-    with _StreamlitThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {executor.submit(process_batch, b): b for b in batches}
         
         completed_count = 0
@@ -850,7 +907,7 @@ def correct_requirements(requirements: List[Requirement], llm=None, progress_cal
             pass
 
     correction_data_map = {}
-    with _StreamlitThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {
             executor.submit(correct_single_requirement, i, r, llm, rag, rag_contexts[i], selected_collections): i 
             for i, r in enumerate(requirements)
