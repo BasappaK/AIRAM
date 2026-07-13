@@ -223,10 +223,10 @@ import { ApiService } from '../../services/api.service';
                 <th *ngIf="hasCorrections()">Corrected Requirement</th>
               </tr>
               <tr *ngIf="isTraceabilityRun">
-                <th>SWE.1 ID</th>
-                <th>SWE.1 Requirement</th>
-                <th>SWE.2 ID</th>
-                <th>SWE.2 Requirement</th>
+                <th>SYS.1 ID</th>
+                <th>SYS.1 Requirement</th>
+                <th>SYS.2 ID</th>
+                <th>SYS.2 Requirement</th>
                 <th>Status</th>
                 <th>Rationale / Reasoning</th>
               </tr>
