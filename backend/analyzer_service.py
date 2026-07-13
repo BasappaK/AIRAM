@@ -434,6 +434,7 @@ async def run_requirements_analysis_job(
                 rationale=item.get("rationale", item.get("Rationale", "")),
                 covers=item.get("covers", item.get("Mapped_SWE1_ID", item.get("mapped_swe1_id", "")))
             ))
+            swe1_reqs[-1].category = "sys1"
             
         swe2_reqs = []
         for idx, item in enumerate(swe2_reqs_raw):
@@ -445,6 +446,7 @@ async def run_requirements_analysis_job(
                 rationale=item.get("rationale", item.get("Rationale", "")),
                 covers=item.get("covers", item.get("Covers", item.get("Mapped_SWE1_ID", item.get("mapped_swe1_id", ""))))
             ))
+            swe2_reqs[-1].category = "sys2"
         
         print(f"[TRACE] Built {len(swe1_reqs)} SWE1 Requirement objects, {len(swe2_reqs)} SWE2 Requirement objects", flush=True)
         if swe2_reqs:
@@ -513,18 +515,19 @@ async def run_requirements_analysis_job(
             
             # Determine initial placeholder keys
             if mode == "traceability":
-                row_id = create_placeholder_result(run_id, None, None)
+                row_id = create_placeholder_result(run_id, None, None, category="traceability")
                 update_execution_result_by_id(
                     row_id=row_id,
                     status="PROCESSING",
                     failed_rule=None,
-                    rationale="Analyzing requirement... waiting for LLM/deterministic response",
+                    rationale=f"Analyzing trace for {r.name}... waiting for LLM/deterministic response",
                     corrected_req=None,
                     swe1_id=r.name,
-                    swe1_text=r.content
+                    swe1_text=r.content,
+                    category="traceability"
                 )
             else:
-                row_id = create_placeholder_result(run_id, r.name, r.content)
+                row_id = create_placeholder_result(run_id, r.name, r.content, category=getattr(r, "category", None))
                 
             # Update progress bar state
             if run_id in ACTIVE_JOBS:
@@ -606,15 +609,16 @@ async def run_requirements_analysis_job(
             for s2 in swe2_reqs:
                 if s2.name not in covered_swe2_ids:
                     orphan_count += 1
-                    row_id = create_placeholder_result(run_id, s2.name, s2.content)
+                    row_id = create_placeholder_result(run_id, s2.name, s2.content, category="traceability")
                     update_execution_result_by_id(
                         row_id=row_id,
                         status="FAIL",
-                        failed_rule=None,
+                        failed_rule="Orphan LLD",
                         rationale="Orphaned LLD: No linked SWE.1 requirement found.",
                         corrected_req=None,
                         swe1_id=None,
-                        swe1_text=None
+                        swe1_text=None,
+                        category="traceability"
                     )
             print(f"[TRACE] Orphaned SWE.2 requirements: {orphan_count}", flush=True)
                     

@@ -180,6 +180,11 @@ import { ApiService } from '../../services/api.service';
             <button class="btn btn-secondary btn-sm" (click)="exportResults()">📥 Export CSV</button>
           </div>
         </div>
+        <div class="tabs-nav" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+          <button class="btn btn-sm" [class.btn-primary]="activeTab === 'sys1'" [class.btn-secondary]="activeTab !== 'sys1'" (click)="activeTab = 'sys1'; currentPage = 1" *ngIf="!isTraceabilityRun && hasCategory('sys1')">SYS 1 Quality</button>
+          <button class="btn btn-sm" [class.btn-primary]="activeTab === 'sys2'" [class.btn-secondary]="activeTab !== 'sys2'" (click)="activeTab = 'sys2'; currentPage = 1" *ngIf="!isTraceabilityRun && hasCategory('sys2')">SYS 2 Quality</button>
+          <button class="btn btn-sm" [class.btn-primary]="activeTab === 'traceability'" [class.btn-secondary]="activeTab !== 'traceability'" (click)="activeTab = 'traceability'; currentPage = 1" *ngIf="isTraceabilityRun || hasCategory('traceability')">Traceability</button>
+        </div>
         
         <div class="table-container">
           <table>
@@ -202,7 +207,7 @@ import { ApiService } from '../../services/api.service';
               </tr>
             </thead>
             <tbody>
-              <ng-container *ngFor="let row of results | slice:(currentPage - 1) * pageSize : currentPage * pageSize">
+              <ng-container *ngFor="let row of filteredResults | slice:(currentPage - 1) * pageSize : currentPage * pageSize">
                 <!-- Quality Analysis View -->
                 <tr *ngIf="!isTraceabilityRun">
                   <td style="font-weight: 600; white-space: nowrap;">{{ row.req_id }}</td>
@@ -240,9 +245,9 @@ import { ApiService } from '../../services/api.service';
         </div>
         
         <!-- Pagination Footer -->
-        <div class="pagination-footer" *ngIf="results.length > pageSize" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background-color: #f8f9fa; border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-secondary);">
+        <div class="pagination-footer" *ngIf="filteredResults.length > pageSize" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background-color: #f8f9fa; border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-secondary);">
           <div class="pagination-info">
-            Showing <strong style="color: var(--text-primary);">{{ (currentPage - 1) * pageSize + 1 }}</strong> - <strong style="color: var(--text-primary);">{{ getMin(currentPage * pageSize, results.length) }}</strong> of <strong style="color: var(--text-primary);">{{ results.length }}</strong> requirements
+            Showing <strong style="color: var(--text-primary);">{{ (currentPage - 1) * pageSize + 1 }}</strong> - <strong style="color: var(--text-primary);">{{ getMin(currentPage * pageSize, filteredResults.length) }}</strong> of <strong style="color: var(--text-primary);">{{ filteredResults.length }}</strong> requirements
           </div>
           <div class="pagination-controls" style="display: flex; align-items: center; gap: 12px;">
             <button class="btn btn-sm btn-secondary pagination-btn" [disabled]="currentPage === 1" (click)="setPage(currentPage - 1)" style="padding: 3px 10px; font-size: 0.75rem; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid var(--border-color); background-color: #fff; cursor: pointer;">
@@ -601,6 +606,9 @@ JSON Schema:
   
   isTraceabilityRun = false;
   
+  // Tab state for output table
+  activeTab: 'sys1' | 'sys2' | 'traceability' = 'sys1';
+  
   private timerSubscription: any;
 
   constructor(private apiService: ApiService, private elementRef: ElementRef, private cdr: ChangeDetectorRef) {}
@@ -676,6 +684,11 @@ JSON Schema:
     const file = event.target.files[0];
     if (file) {
       this.standardFile = file;
+      // Auto-populate the name field from filename (without extension)
+      if (!this.newStandardName || this.newStandardName.trim() === '') {
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+        this.newStandardName = nameWithoutExt;
+      }
     }
   }
 
@@ -777,8 +790,10 @@ JSON Schema:
     if (this.actions.trace || this.actions.correctTrace) {
       runType = 'traceability';
       this.isTraceabilityRun = true;
+      this.activeTab = 'traceability';
     } else {
       this.isTraceabilityRun = false;
+      this.activeTab = 'sys1';
     }
     
     this.isRunning = true;
@@ -899,6 +914,7 @@ JSON Schema:
     this.activeRunId = runId;
     const matchedRun = this.history.find(r => r.run_id === runId);
     this.isTraceabilityRun = matchedRun?.type === 'traceability';
+    this.activeTab = this.isTraceabilityRun ? 'traceability' : 'sys1';
     this.currentPage = 1;
     
     this.apiService.getRunResults(runId).subscribe({
@@ -950,6 +966,20 @@ JSON Schema:
     return this.totalRows > 0 ? (this.currentRow / this.totalRows) * 100 : 0;
   }
 
+  get filteredResults(): any[] {
+    if (this.isTraceabilityRun) {
+      return this.results.filter(r => r.category === 'traceability' || r.category == null);
+    }
+    return this.results.filter(r => r.category === this.activeTab || (this.activeTab === 'sys1' && r.category == null));
+  }
+
+  hasCategory(category: string): boolean {
+    if (category === 'sys1' && !this.isTraceabilityRun) {
+      return this.results.some(r => r.category === category || r.category == null);
+    }
+    return this.results.some(r => r.category === category);
+  }
+
   exportResults() {
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "ID,Input Requirement,Status,Rule/Trace Target,Rationale,Corrected Requirement\n";
@@ -975,13 +1005,13 @@ JSON Schema:
   }
 
   hasCorrections(): boolean {
-    if (!this.results || this.results.length === 0) return false;
-    return this.results.some(row => row.corrected_req && row.corrected_req !== '-' && row.corrected_req.trim() !== '');
+    if (!this.filteredResults || this.filteredResults.length === 0) return false;
+    return this.filteredResults.some(row => row.corrected_req && row.corrected_req !== '-' && row.corrected_req.trim() !== '');
   }
 
   // Pagination & Reset Methods
   getTotalPages(): number {
-    return Math.ceil(this.results.length / this.pageSize) || 1;
+    return Math.ceil(this.filteredResults.length / this.pageSize) || 1;
   }
 
   setPage(page: number) {
