@@ -1033,11 +1033,22 @@ JSON Schema:
     // Build a master rules dictionary mapping rule_name -> category
     const rulesMaster: any = {};
     if (this.guidelines && this.guidelines.length > 0) {
-      this.guidelines.forEach(g => {
+      // Use selected guidelines if any, otherwise fall back to all
+      const targetGuidelines = this.selectedGuidelineIds.length > 0 
+        ? this.guidelines.filter(g => this.selectedGuidelineIds.includes(g.id))
+        : this.guidelines;
+
+      targetGuidelines.forEach(g => {
         if (g.content) {
           try {
             const parsed = typeof g.content === 'string' ? JSON.parse(g.content) : g.content;
-            Object.assign(rulesMaster, parsed);
+            // Merge carefully to avoid old JSON files without categories overwriting new ones
+            Object.keys(parsed).forEach(ruleId => {
+              const rule = parsed[ruleId];
+              if (!rulesMaster[ruleId] || rule.category) {
+                rulesMaster[ruleId] = rule;
+              }
+            });
           } catch (e) {
             console.error('Error parsing guideline content', e);
           }
