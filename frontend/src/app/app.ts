@@ -249,6 +249,7 @@ import { ApiService } from './services/api.service';
       50% { opacity: 1; transform: scale(1.2); }
       100% { opacity: 0.4; transform: scale(0.8); }
     }
+  `]
 })
 export class App implements OnInit {
   activeTab = 'dashboard';
