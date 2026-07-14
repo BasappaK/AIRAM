@@ -23,6 +23,18 @@ import { ApiService } from './services/api.service';
         
         <div class="header-left">
           <div class="app-logo">
+          <svg class="logo-svg" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="8" fill="url(#logo-grad)" />
+              <path d="M10 22L16 10L22 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M11.5 18H20.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M23 7L23.5 8.5L25 9L23.5 9.5L23 11L22.5 9.5L21 9L22.5 8.5L23 7Z" fill="#FFFBEB" />
+              <defs>
+                <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#0d6efd"/>
+                  <stop offset="100%" stop-color="#00c9ff"/>
+                </linearGradient>
+              </defs>
+            </svg>
             <span class="logo-text-main">AIRAM</span>
           </div>
           
