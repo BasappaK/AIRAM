@@ -156,7 +156,8 @@ def load_json_rules() -> dict:
     if os.path.exists(rules_path):
         try:
             with open(rules_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                CURRENT_RULES = json.load(f)
+                return CURRENT_RULES
         except Exception as e:
             print(f"[quality_analyser] Error loading rules.json: {e}", flush=True)
     return {}
