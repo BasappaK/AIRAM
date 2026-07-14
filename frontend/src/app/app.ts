@@ -35,7 +35,7 @@ import { ApiService } from './services/api.service';
                 </linearGradient>
               </defs>
             </svg>
-            <span class="logo-text-main">AIRAM</span>
+            <span class="logo-text-main">  AIRAM</span>
           </div>
           
           <nav class="top-nav-tabs">
