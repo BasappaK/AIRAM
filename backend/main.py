@@ -252,9 +252,9 @@ async def get_run_results(run_id: str):
     return get_execution_results(run_id)
 
 @app.get("/api/analysis/history")
-async def get_history(limit: int = 15):
+async def get_history(limit: int = 15, offset: int = 0):
     """Lists previous execution summaries, supporting the dashboard metrics and minimizations."""
-    return get_previous_executions(limit)
+    return get_previous_executions(limit, offset)
 
 @app.post("/api/analysis/{run_id}/minimize")
 async def minimize_run(run_id: str, minimized: bool = Form(...)):

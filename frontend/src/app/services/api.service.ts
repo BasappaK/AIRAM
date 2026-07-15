@@ -173,9 +173,9 @@ private baseUrl = window.location.hostname === 'localhost'
     return this.http.get<any[]>(`${this.baseUrl}/api/analysis/${runId}/results`);
   }
 
-  getHistory(limit: number = 15): Observable<any[]> {
+  getHistory(limit: number = 15, offset: number = 0): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/api/analysis/history`, {
-      params: { limit: limit.toString() }
+      params: { limit: limit.toString(), offset: offset.toString() }
     });
   }
 

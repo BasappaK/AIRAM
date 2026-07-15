@@ -99,7 +99,7 @@ import { ApiService } from '../../services/api.service';
             </div>
           </div>
 
-          <button class="btn btn-primary">
+          <button class="btn btn-primary" (click)="newExecution.emit()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
@@ -259,6 +259,13 @@ import { ApiService } from '../../services/api.service';
             </div>
           </div>
         </div>
+      </div>
+      
+      <!-- Load More Button -->
+      <div *ngIf="!isLoadingHistory && hasMoreHistory" style="text-align: center; margin-top: 24px; margin-bottom: 24px;">
+        <button class="btn btn-primary" (click)="loadMoreHistory()" [disabled]="isLoadingMore" style="padding: 8px 24px;">
+          {{ isLoadingMore ? 'Loading...' : 'Load More' }}
+        </button>
       </div>
       
       <!-- Traceability Details Modal -->
@@ -438,6 +445,7 @@ import { ApiService } from '../../services/api.service';
 })
 export class DashboardComponent implements OnInit {
   @Output() viewRun = new EventEmitter<string>();
+  @Output() newExecution = new EventEmitter<void>();
   
   @Input() set active(val: boolean) {
     if (val) {
@@ -453,6 +461,9 @@ export class DashboardComponent implements OnInit {
   expandedResults: { [runId: string]: any[] } = {};
   currentPage: { [runId: string]: number } = {};
   isLoadingHistory: boolean = true;
+  currentOffset: number = 0;
+  hasMoreHistory: boolean = true;
+  isLoadingMore: boolean = false;
 
   // Filter State
   showFilterPanel: boolean = false;
@@ -554,10 +565,13 @@ export class DashboardComponent implements OnInit {
 
   loadData() {
     this.isLoadingHistory = true;
-    this.apiService.getHistory().subscribe({
+    this.currentOffset = 0;
+    this.hasMoreHistory = true;
+    this.apiService.getHistory(15, 0).subscribe({
       next: (res) => {
         this.history = res;
         this.isLoadingHistory = false;
+        if (res.length < 15) this.hasMoreHistory = false;
         this.calculatePassRate();
         
         // Pre-fetch results for any already expanded cards
@@ -583,6 +597,38 @@ export class DashboardComponent implements OnInit {
     this.apiService.getRagMetrics().subscribe({
       next: (res) => {
         this.ragMetrics = res;
+      }
+    });
+  }
+
+  loadMoreHistory() {
+    if (this.isLoadingMore || !this.hasMoreHistory) return;
+    this.isLoadingMore = true;
+    this.currentOffset += 15;
+    this.apiService.getHistory(15, this.currentOffset).subscribe({
+      next: (res) => {
+        this.history = [...this.history, ...res];
+        this.isLoadingMore = false;
+        if (res.length < 15) this.hasMoreHistory = false;
+        this.calculatePassRate();
+        
+        // Pre-fetch results for any already expanded cards
+        res.forEach(run => {
+          if (run.minimized !== 1) {
+            this.apiService.getRunResults(run.run_id).subscribe(details => {
+              if (run.type === 'traceability') {
+                details.forEach((r: any) => r.parsed_swe2_list = this.getParsedSwe2List(r));
+              }
+              this.expandedResults[run.run_id] = details;
+              this.cdr.detectChanges();
+            });
+          }
+        });
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.isLoadingMore = false;
+        this.cdr.detectChanges();
       }
     });
   }

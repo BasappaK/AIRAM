@@ -79,7 +79,8 @@ import { ApiService } from './services/api.service';
       <app-dashboard 
         [hidden]="activeTab !== 'dashboard'"
         [active]="activeTab === 'dashboard'"
-        (viewRun)="onViewHistoryRun($event)">
+        (viewRun)="onViewHistoryRun($event)"
+        (newExecution)="setTab('analysis')">
       </app-dashboard>
       
       <app-requirements 

@@ -247,7 +247,7 @@ def get_execution_run(run_id: str) -> dict:
             "minimized": row["minimized"],
             "current_row": row["current_row"],
             "total_rows": row["total_rows"],
-            "guideline_name": row.get("guideline_name")
+            "guideline_name": dict(row).get("guideline_name")
         }
     return None
 
@@ -323,7 +323,7 @@ def update_execution_result_by_id(
     conn.commit()
     conn.close()
 
-def get_previous_executions(limit: int = 10):
+def get_previous_executions(limit: int = 10, offset: int = 0):
     conn = get_connection()
     cursor = conn.cursor()
     # Fetch execution runs with a summary count of pass, fail, review
@@ -338,7 +338,7 @@ def get_previous_executions(limit: int = 10):
         LEFT JOIN execution_results s ON r.run_id = s.run_id
         GROUP BY r.run_id
         ORDER BY r.timestamp DESC
-        LIMIT {limit}
+        LIMIT {limit} OFFSET {offset}
     """)
     rows = cursor.fetchall()
     conn.close()
