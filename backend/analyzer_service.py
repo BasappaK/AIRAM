@@ -399,7 +399,14 @@ async def run_requirements_analysis_job(
     """Executes the analysis process row-by-row supporting Pause, Resume, Stop operations."""
     print(f"[TRACE] Job {run_id} starting. type={run_type}", flush=True)
     try:
-        save_execution_run(run_id, run_type, "running")
+        guideline_name = None
+        if guideline_id:
+            from backend.database import get_guideline_details
+            g_details = get_guideline_details(guideline_id)
+            if g_details:
+                guideline_name = g_details["name"]
+                
+        save_execution_run(run_id, run_type, "running", guideline_name=guideline_name)
         ACTIVE_JOBS[run_id] = {
             "status": "running",
             "current_row": 0,

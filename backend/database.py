@@ -56,7 +56,8 @@ def init_db():
             status TEXT NOT NULL, -- 'running', 'paused', 'stopped', 'completed'
             minimized INTEGER DEFAULT 0, -- 0 = normal, 1 = minimized
             current_row INTEGER DEFAULT 0,
-            total_rows INTEGER DEFAULT 0
+            total_rows INTEGER DEFAULT 0,
+            guideline_name TEXT
         )
     """)
     try:
@@ -65,6 +66,10 @@ def init_db():
         pass
     try:
         cursor.execute("ALTER TABLE execution_runs ADD COLUMN total_rows INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE execution_runs ADD COLUMN guideline_name TEXT")
     except Exception:
         pass
     
@@ -194,12 +199,12 @@ def get_chunking_metrics():
         }
     return {"total_chunks": 0, "total_tokens": 0, "avg_tokens": 0}
 
-def save_execution_run(run_id: str, run_type: str, status: str):
+def save_execution_run(run_id: str, run_type: str, status: str, guideline_name: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT OR REPLACE INTO execution_runs (run_id, type, status) VALUES (?, ?, ?)",
-        (run_id, run_type, status)
+        "INSERT OR REPLACE INTO execution_runs (run_id, type, status, guideline_name) VALUES (?, ?, ?, ?)",
+        (run_id, run_type, status, guideline_name)
     )
     conn.commit()
     conn.close()
@@ -241,7 +246,8 @@ def get_execution_run(run_id: str) -> dict:
             "status": row["status"],
             "minimized": row["minimized"],
             "current_row": row["current_row"],
-            "total_rows": row["total_rows"]
+            "total_rows": row["total_rows"],
+            "guideline_name": row.get("guideline_name")
         }
     return None
 
@@ -323,7 +329,7 @@ def get_previous_executions(limit: int = 10):
     # Fetch execution runs with a summary count of pass, fail, review
     cursor.execute(f"""
         SELECT 
-            r.run_id, r.timestamp, r.type, r.status, r.minimized,
+            r.run_id, r.timestamp, r.type, r.status, r.minimized, r.guideline_name,
             SUM(CASE WHEN s.status = 'PASS' THEN 1 ELSE 0 END) as pass_count,
             SUM(CASE WHEN s.status = 'FAIL' THEN 1 ELSE 0 END) as fail_count,
             SUM(CASE WHEN s.status = 'REVIEW' THEN 1 ELSE 0 END) as review_count,
