@@ -3,30 +3,7 @@ from typing import List, Dict, Any
 from Model.requirement import Requirement
 from Analysis.quality_analyser import clean_and_parse_json
 
-def find_deterministic_links(swe1: Requirement, swe2_reqs: list) -> list:
-    """Finds matching SWE.2 requirements for a given SWE.1 requirement based on explicit Mapped_SWE1_ID (covers) or ID reference in content."""
-    links = []
-    for r2 in swe2_reqs:
-        # Check covers attribute
-        if r2.covers:
-            # Might be list like "SYS_REQ_0001, SYS_REQ_0002"
-            covers_ids = [c.strip().lower() for c in r2.covers.split(",") if c.strip()]
-            if swe1.name.lower() in covers_ids:
-                links.append(r2)
-                continue
-        # Check text references like "SYS_REQ_0001" (case insensitive)
-        if swe1.name.lower() in r2.content.lower():
-            links.append(r2)
-            continue
-            
-    # Robust deduplication by s2.name explicitly instead of identity-based set()
-    seen = set()
-    deduped = []
-    for s2 in links:
-        if s2.name not in seen:
-            seen.add(s2.name)
-            deduped.append(s2)
-    return deduped
+
 
 def analyze_traceability_from_swe1_with_llm(r_swe1: Requirement, swe2_reqs: list, llm) -> dict:
     """Calls Nvidia NIM API to analyze which SWE.2 requirements trace to a given SWE.1 requirement."""
@@ -90,52 +67,35 @@ def compare_traceability(swe1_reqs: List[Requirement], swe2_reqs: List[Requireme
     covered_swe1 = set()
 
     for r1 in swe1_reqs:
-        # 1. Deterministic match first
-        links = find_deterministic_links(r1, swe2_reqs)
+        # Call LLM for semantic links
+        result = analyze_traceability_from_swe1_with_llm(r1, swe2_reqs, llm)
+        status = result.get("status", "FAIL")
+        rationale = result.get("rationale", "No explanation provided.")
+        linked_ids = result.get("linked_swe2_ids", [])
+        linked_swe2s = [s2 for s2 in swe2_reqs if s2.name in linked_ids]
         
-        if links:
+        if linked_swe2s:
             covered_swe1.add(r1.name)
-            for s2 in links:
+            for s2 in linked_swe2s:
                 covered_swe2.add(s2.name)
                 
             table.append({
                 "swe1_id": r1.name,
                 "swe1_content": r1.content,
-                "swe2_id": ", ".join([s2.name for s2 in links]),
-                "swe2_content": "\n".join([f"• {s2.name}: {s2.content}" for s2 in links]),
-                "status": "PASS",
-                "rationale": f"Matched {len(links)} SWE.2 requirement(s) deterministically."
+                "swe2_id": ", ".join([s2.name for s2 in linked_swe2s]),
+                "swe2_content": "\n".join([f"• {s2.name}: {s2.content}" for s2 in linked_swe2s]),
+                "status": status,
+                "rationale": rationale
             })
         else:
-            # 2. Call LLM for semantic links if available
-            result = analyze_traceability_from_swe1_with_llm(r1, swe2_reqs, llm)
-            status = result.get("status", "FAIL")
-            rationale = result.get("rationale", "No explanation provided.")
-            linked_ids = result.get("linked_swe2_ids", [])
-            linked_swe2s = [s2 for s2 in swe2_reqs if s2.name in linked_ids]
-            
-            if linked_swe2s:
-                covered_swe1.add(r1.name)
-                for s2 in linked_swe2s:
-                    covered_swe2.add(s2.name)
-                    
-                table.append({
-                    "swe1_id": r1.name,
-                    "swe1_content": r1.content,
-                    "swe2_id": ", ".join([s2.name for s2 in linked_swe2s]),
-                    "swe2_content": "\n".join([f"• {s2.name}: {s2.content}" for s2 in linked_swe2s]),
-                    "status": status,
-                    "rationale": rationale
-                })
-            else:
-                table.append({
-                    "swe1_id": r1.name,
-                    "swe1_content": r1.content,
-                    "swe2_id": "-",
-                    "swe2_content": "-",
-                    "status": "FAIL",
-                    "rationale": rationale
-                })
+            table.append({
+                "swe1_id": r1.name,
+                "swe1_content": r1.content,
+                "swe2_id": "-",
+                "swe2_content": "-",
+                "status": "FAIL",
+                "rationale": rationale
+            })
 
     # Process orphaned SWE.2 requirements
     for s2 in swe2_reqs:

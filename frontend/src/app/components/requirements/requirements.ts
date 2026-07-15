@@ -953,6 +953,11 @@ JSON Schema:
       return;
     }
 
+    if ((this.actions.trace || this.actions.correctTrace) && (!this.swe1File || !this.swe2File)) {
+      alert('⚠️ Both SYS 1 and SYS 2 documents must be uploaded for traceability analysis.');
+      return;
+    }
+
     let runType = 'quality';
     if (this.actions.trace || this.actions.correctTrace) {
       runType = 'traceability';

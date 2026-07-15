@@ -25,7 +25,7 @@ from backend.database import (
     get_execution_status
 )
 from backend.rag_service import rag_engine
-from Analysis.traceability_analyser import find_deterministic_links, analyze_traceability_from_swe1_with_llm
+from Analysis.traceability_analyser import analyze_traceability_from_swe1_with_llm
 
 # Active execution state tracker for single process fallback (still kept for backward compatibility, but DB is source of truth)
 ACTIVE_JOBS = {}  # run_id -> { "status": "running" | "paused" | "stopped", "current_row": int, "total_rows": int }
@@ -256,22 +256,6 @@ def parse_requirements_file(file_content: bytes, filename: str) -> list:
         return read_xlsx_file(file_content)
     return []
 
-def find_deterministic_links(swe1: Requirement, swe2_reqs: list) -> list:
-    """Finds matching SWE.2 requirements for a given SWE.1 requirement based on explicit Mapped_SWE1_ID (covers) or ID reference in content."""
-    links = []
-    for r2 in swe2_reqs:
-        # Check covers attribute
-        if r2.covers:
-            # Might be list like "SYS_REQ_0001, SYS_REQ_0002"
-            covers_ids = [c.strip().lower() for c in r2.covers.split(",") if c.strip()]
-            if swe1.name.lower() in covers_ids:
-                links.append(r2)
-                continue
-        # Check text references like "SYS_REQ_0001" (case insensitive)
-        if swe1.name.lower() in r2.content.lower():
-            links.append(r2)
-            continue
-    return list(set(links)) # Deduplicate
 
 def analyze_traceability_from_swe1_with_llm(r_swe1: Requirement, swe2_reqs: list, llm: LLMManager) -> dict:
     """Calls Nvidia NIM API to analyze which SWE.2 requirements trace to a given SWE.1 requirement."""
@@ -552,22 +536,13 @@ async def run_requirements_analysis_job(
                     
             # Analyze using LLM or local fallbacks based on mode
             if mode == "traceability":
-                # 1. Deterministic Check
-                deterministic_links = find_deterministic_links(r, swe2_reqs)
-                print(f"[TRACE]   Deterministic links found: {len(deterministic_links)} for {r.name}", flush=True)
-                if deterministic_links:
-                    status = "PASS"
-                    linked_swe2s = deterministic_links
-                    rationale = f"Matched {len(deterministic_links)} SWE.2 requirement(s) deterministically (Mapped_SWE1_ID or direct ID text reference)."
-                else:
-                    # 2. LLM Semantic Check
-                    print(f"[TRACE]   Falling back to LLM for {r.name}...", flush=True)
-                    result = await asyncio.to_thread(analyze_traceability_from_swe1_with_llm, r, swe2_reqs, llm_manager)
-                    print(f"[TRACE]   LLM returned: status={result.get('status')}, linked_ids={result.get('linked_swe2_ids', [])}", flush=True)
-                    status = result.get("status", "FAIL")
-                    rationale = result.get("rationale", "No explanation provided.")
-                    linked_ids = result.get("linked_swe2_ids", [])
-                    linked_swe2s = [s2 for s2 in swe2_reqs if s2.name in linked_ids]
+                print(f"[TRACE]   Using LLM for {r.name}...", flush=True)
+                result = await asyncio.to_thread(analyze_traceability_from_swe1_with_llm, r, swe2_reqs, llm_manager)
+                print(f"[TRACE]   LLM returned: status={result.get('status')}, linked_ids={result.get('linked_swe2_ids', [])}", flush=True)
+                status = result.get("status", "FAIL")
+                rationale = result.get("rationale", "No explanation provided.")
+                linked_ids = result.get("linked_swe2_ids", [])
+                linked_swe2s = [s2 for s2 in swe2_reqs if s2.name in linked_ids]
                 
                 # Format outputs
                 swe2_ids_str = ", ".join([s2.name for s2 in linked_swe2s]) if linked_swe2s else None
