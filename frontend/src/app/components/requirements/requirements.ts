@@ -233,8 +233,18 @@ import { ApiService } from '../../services/api.service';
                   </td>
                   <td style="font-weight: 500; font-family: monospace;">{{ row.failed_rule || 'N/A' }}</td>
                   <td style="color: var(--text-secondary); font-size: 0.8rem;">{{ row.rationale }}</td>
-                  <td *ngIf="hasCorrections()" style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px;">
-                    {{ row.corrected_req || '-' }}
+                  <td *ngIf="hasCorrections()" style="font-weight: 500; color: #1e293b; background-color: #fafafa; border-left: 3px solid #cbd5e1; padding-left: 10px; padding-top: 10px; padding-bottom: 10px;">
+                    <ng-container *ngIf="splitCorrectedReq(row.corrected_req).length > 1; else singleCorrected">
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div *ngFor="let req of splitCorrectedReq(row.corrected_req); let i = index" 
+                             style="background-color: white; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px; font-size: 0.85rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                          <span style="color: var(--color-primary); font-weight: 600; margin-right: 6px;">{{i + 1}}.</span>{{ req }}
+                        </div>
+                      </div>
+                    </ng-container>
+                    <ng-template #singleCorrected>
+                      {{ row.corrected_req || '-' }}
+                    </ng-template>
                   </td>
                 </tr>
                 
@@ -1003,16 +1013,41 @@ JSON Schema:
   exportResults() {
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "ID,Input Requirement,Status,Rule/Trace Target,Rationale,Corrected Requirement\n";
+    
     this.results.forEach(row => {
-      const line = [
-        row.req_id || '',
-        `"${(row.input_req || '').replace(/"/g, '""')}"`,
-        row.status || '',
-        row.failed_rule || 'N/A',
-        `"${(row.rationale || '').replace(/"/g, '""')}"`,
-        `"${(row.corrected_req || '').replace(/"/g, '""')}"`
-      ].join(",");
-      csvContent += line + "\n";
+      const correctedReqs = this.splitCorrectedReq(row.corrected_req);
+      
+      if (correctedReqs.length > 1) {
+        // If split, create multiple rows
+        correctedReqs.forEach((reqText: string, idx: number) => {
+          const splitId = `${row.req_id || ''}.${idx + 1}`;
+          const inputReq = idx === 0 ? `"${(row.input_req || '').replace(/"/g, '""')}"` : '""';
+          const status = idx === 0 ? row.status || '' : '""';
+          const rule = idx === 0 ? row.failed_rule || 'N/A' : '""';
+          const rationale = idx === 0 ? `"${(row.rationale || '').replace(/"/g, '""')}"` : '""';
+          
+          const line = [
+            splitId,
+            inputReq,
+            status,
+            rule,
+            rationale,
+            `"${reqText.replace(/"/g, '""')}"`
+          ].join(",");
+          csvContent += line + "\n";
+        });
+      } else {
+        // Single row
+        const line = [
+          row.req_id || '',
+          `"${(row.input_req || '').replace(/"/g, '""')}"`,
+          row.status || '',
+          row.failed_rule || 'N/A',
+          `"${(row.rationale || '').replace(/"/g, '""')}"`,
+          `"${(row.corrected_req || '').replace(/"/g, '""')}"`
+        ].join(",");
+        csvContent += line + "\n";
+      }
     });
     
     const encodedUri = encodeURI(csvContent);
@@ -1027,6 +1062,11 @@ JSON Schema:
   hasCorrections(): boolean {
     if (!this.filteredResults || this.filteredResults.length === 0) return false;
     return this.filteredResults.some(row => row.corrected_req && row.corrected_req !== '-' && row.corrected_req.trim() !== '');
+  }
+
+  splitCorrectedReq(text: string): string[] {
+    if (!text || text === '-') return [];
+    return text.split('\n').map(t => t.trim()).filter(t => t.length > 0);
   }
 
   // Pagination & Reset Methods
