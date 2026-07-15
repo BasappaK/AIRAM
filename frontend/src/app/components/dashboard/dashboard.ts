@@ -1,4 +1,4 @@
-import { Component, OnInit, EventEmitter, Output, Input, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, EventEmitter, Output, Input, ChangeDetectorRef, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -60,8 +60,8 @@ import { ApiService } from '../../services/api.service';
         <h2 style="font-size: 1.5rem; font-weight: 600; color: var(--text-primary); margin: 0;">Execution Runs History</h2>
         <div style="display: flex; gap: 12px; position: relative;">
           <!-- Filter Button & Dropdown Container -->
-          <div style="position: relative;">
-            <button class="btn btn-secondary" (click)="showFilterPanel = !showFilterPanel" [class.active]="showFilterPanel">
+          <div style="position: relative;" #filterContainer>
+            <button class="btn btn-secondary" (click)="toggleFilterPanel($event)" [class.active]="showFilterPanel">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
               </svg>
@@ -177,15 +177,16 @@ import { ApiService } from '../../services/api.service';
                   <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary);">{{ getPercentage(run.pass_count, run.total_count) | number:'1.0-0' }}% Success</span>
                 </div>
                 <div class="run-bar" style="display: flex; height: 10px; border-radius: 5px; overflow: hidden; background-color: #e2e8f0; width: 100%;">
-                  <div class="bar-segment bar-pass" [style.width.%]="getPercentage(run.pass_count, run.total_count)" title="Pass"></div>
-                  <div class="bar-segment bar-review" [style.width.%]="getPercentage(run.review_count + run.fail_count, run.total_count)" title="Review" style="background-color: #d97706;"></div>
+                  <div class="bar-segment bar-pass" [style.width.%]="getPercentage(run.pass_count, run.total_count)" title="Pass" style="background-color: var(--color-success); height: 100%;"></div>
+                  <div class="bar-segment bar-review" [style.width.%]="getPercentage(run.review_count + run.fail_count, run.total_count)" title="Review" style="background-color: #d97706; height: 100%;"></div>
                 </div>
               </div>
 
               <!-- Right Column: Mini table -->
               <div class="table-col" style="flex: 1; min-width: 0;" *ngIf="expandedResults[run.run_id] && expandedResults[run.run_id].length > 0">
                 <div class="table-container" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-                  <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; background: #fff;">
+                  <!-- Quality Table -->
+                  <table *ngIf="run.type !== 'traceability'" style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; background: #fff;">
                     <thead>
                       <tr style="background-color: #f8fafc;">
                         <th style="padding: 12px 16px; width: 80px;">ID</th>
@@ -208,6 +209,32 @@ import { ApiService } from '../../services/api.service';
                     </tbody>
                   </table>
 
+                  <!-- Traceability Table -->
+                  <table *ngIf="run.type === 'traceability'" style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; background: #fff;">
+                    <thead>
+                      <tr style="background-color: #f8fafc;">
+                        <th style="padding: 12px 16px; width: 40%;">SYS.1 ID</th>
+                        <th style="padding: 12px 16px; width: 60%;">SYS.2 IDs</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let row of expandedResults[run.run_id] | slice:(getCurrentPage(run.run_id) - 1) * 3:getCurrentPage(run.run_id) * 3" style="border-top: 1px solid var(--border-color);">
+                        <td style="padding: 16px; vertical-align: top;">
+                          <a href="javascript:void(0)" (click)="openTraceDetails(row)" style="font-weight: 600; color: var(--color-primary); text-decoration: underline;">
+                            {{ row.swe1_id || '-' }}
+                          </a>
+                        </td>
+                        <td style="padding: 16px; vertical-align: top;">
+                          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <a *ngFor="let swe2 of row.parsed_swe2_list" href="javascript:void(0)" (click)="openTraceDetails(row)" style="font-weight: 600; color: #0f766e; text-decoration: underline;">
+                              {{ swe2.id || '-' }}
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
                   <!-- Pagination Footer -->
                   <div class="pagination-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border-color); background: #f8fafc; font-size: 0.75rem; color: var(--text-secondary);">
                     <div>
@@ -222,6 +249,37 @@ import { ApiService } from '../../services/api.service';
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Traceability Details Modal -->
+      <div class="modal-overlay" *ngIf="showTraceModal" (click)="closeTraceDetails()">
+        <div class="modal-content" style="max-width: 600px; padding: 24px;" (click)="$event.stopPropagation()">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 600;">Traceability Links</h3>
+            <button class="icon-btn-minimal" (click)="closeTraceDetails()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          
+          <div *ngIf="traceModalData" style="display: flex; flex-direction: column; gap: 20px; max-height: 60vh; overflow-y: auto;">
+            <div>
+              <div style="font-weight: 700; color: #0369a1; margin-bottom: 8px; font-size: 0.9rem;">SYS.1: {{ traceModalData.swe1_id || '-' }}</div>
+              <div style="background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-primary);">
+                {{ traceModalData.swe1_text || traceModalData.input_req || '-' }}
+              </div>
+            </div>
+            
+            <div>
+              <div style="font-weight: 700; color: #0f766e; margin-bottom: 8px; font-size: 0.9rem;">Linked SYS.2 Requirements</div>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div *ngFor="let swe2 of traceModalData.parsed_swe2_list" style="background: #f0fdfa; padding: 12px; border-radius: 6px; border: 1px solid #ccfbf1;">
+                  <div style="font-weight: 600; color: #0f766e; font-size: 0.8rem; margin-bottom: 4px;">{{ swe2.id || '-' }}</div>
+                  <div style="font-size: 0.85rem; color: var(--text-primary);">{{ swe2.text || '-' }}</div>
                 </div>
               </div>
             </div>
@@ -290,6 +348,42 @@ import { ApiService } from '../../services/api.service';
       flex-direction: column;
       gap: 16px;
     }
+    
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      animation: fadeIn 0.2s ease-out;
+    }
+    
+    .modal-content {
+      background: var(--bg-card);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 600px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
     .history-card {
       border: 1px solid var(--border-color);
       border-radius: 8px;
@@ -350,6 +444,46 @@ export class DashboardComponent implements OnInit {
   filterStatus: string = 'all';
   filterType: string = 'all';
   filterDate: string = 'all';
+  
+  showTraceModal: boolean = false;
+  traceModalData: any = null;
+
+  openTraceDetails(row: any) {
+    this.traceModalData = row;
+    this.showTraceModal = true;
+  }
+
+  closeTraceDetails() {
+    this.showTraceModal = false;
+    this.traceModalData = null;
+  }
+
+  getParsedSwe2List(row: any): any[] {
+    if (!row.req_id || row.req_id === '-' || row.req_id.trim() === '') {
+      return [{ id: '-', text: row.input_req || '-' }];
+    }
+    
+    const ids = row.req_id.split(',').map((id: string) => id.trim());
+    const texts = row.input_req ? row.input_req.split('\n').map((t: string) => t.trim()) : [];
+    
+    const parsedList = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      let text = '-';
+      
+      const prefix = `• ${id}:`;
+      const match = texts.find((t: string) => t.startsWith(prefix));
+      if (match) {
+        text = match.substring(prefix.length).trim();
+      } else if (texts[i]) {
+        text = texts[i].replace(/^•\s*[A-Za-z0-9_\-\.]+:\s*/, '').trim();
+      }
+      
+      parsedList.push({ id, text });
+    }
+    
+    return parsedList.length > 0 ? parsedList : [{ id: '-', text: row.input_req || '-' }];
+  }
 
   get filteredHistory(): any[] {
     return this.history.filter(run => {
@@ -381,7 +515,23 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private eRef: ElementRef) {}
+
+  @HostListener('document:click', ['$event'])
+  clickout(event: Event) {
+    if (this.showFilterPanel) {
+      const clickedInside = this.eRef.nativeElement.querySelector('.runs-history-header')?.contains(event.target);
+      if (!clickedInside) {
+        this.showFilterPanel = false;
+        this.cdr.detectChanges();
+      }
+    }
+  }
+
+  toggleFilterPanel(event: Event) {
+    this.showFilterPanel = !this.showFilterPanel;
+    event.stopPropagation();
+  }
 
   ngOnInit(): void {
     this.loadData();
@@ -399,6 +549,9 @@ export class DashboardComponent implements OnInit {
         this.history.forEach(run => {
           if (run.minimized !== 1) {
             this.apiService.getRunResults(run.run_id).subscribe(details => {
+              if (run.type === 'traceability') {
+                details.forEach((r: any) => r.parsed_swe2_list = this.getParsedSwe2List(r));
+              }
               this.expandedResults[run.run_id] = details;
               this.cdr.detectChanges();
             });
@@ -434,12 +587,21 @@ export class DashboardComponent implements OnInit {
   }
 
   toggleMinimize(runId: string, currentlyMinimized: boolean) {
+    const run = this.history.find(r => r.run_id === runId);
+    if (run) {
+      run.minimized = currentlyMinimized ? 0 : 1;
+    }
+
     this.apiService.minimizeRun(runId, !currentlyMinimized).subscribe(() => {
-      this.loadData();
       if (currentlyMinimized) { // was minimized, now expanding
         this.apiService.getRunResults(runId).subscribe(res => {
+          const runType = this.history.find(r => r.run_id === runId)?.type;
+          if (runType === 'traceability') {
+            res.forEach((r: any) => r.parsed_swe2_list = this.getParsedSwe2List(r));
+          }
           this.expandedResults[runId] = res;
           this.currentPage[runId] = 1;
+          this.cdr.detectChanges();
         });
       }
     });

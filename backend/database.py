@@ -113,10 +113,16 @@ def save_guidelines(guideline_id: str, name: str, data: dict):
 def get_all_guidelines():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, created_at FROM guidelines")
+    cursor.execute("SELECT id, name, created_at, content FROM guidelines")
     rows = cursor.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    
+    result = []
+    for r in rows:
+        d = dict(r)
+        d['content'] = json.loads(d['content']) if d.get('content') else {}
+        result.append(d)
+    return result
 
 def get_guideline_content(guideline_id: str):
     conn = get_connection()
