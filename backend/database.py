@@ -146,7 +146,6 @@ def delete_guideline(guideline_id: str):
     cursor.execute("DELETE FROM guidelines WHERE id = ?", (guideline_id,))
     conn.commit()
     conn.close()
-    trigger_render_sync()
 
 def save_chunk_log(doc_name: str, chunk_index: int, text: str, tokens: int, qdrant_id: str):
     conn = get_connection()
@@ -245,12 +244,12 @@ def update_execution_minimized(run_id: str, minimized: int):
     conn.commit()
     conn.close()
 
-def save_execution_result(run_id: str, req_id: str, input_req: str, status: str, failed_rule: str, rationale: str, corrected_req: str, swe1_id: str = None, swe1_text: str = None, category: str = None):
+def save_execution_result(run_id: str, req_id: str, input_req: str, status: str, failed_rule: str, rationale: str, corrected_req: str, swe1_id: str = None, category: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id, swe1_text, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id, swe1_text, category)
+        "INSERT INTO execution_results (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (run_id, req_id, input_req, status, failed_rule, rationale, corrected_req, swe1_id, category)
     )
     conn.commit()
     conn.close()
@@ -345,15 +344,6 @@ def delete_execution_run(run_id: str):
     cursor.execute("DELETE FROM execution_runs WHERE run_id = ?", (run_id,))
     conn.commit()
     conn.close()
-    trigger_render_sync()
-
-def trigger_render_sync():
-    try:
-        from backend.database_render import sync_sqlite_to_postgres
-        import threading
-        threading.Thread(target=sync_sqlite_to_postgres, daemon=True).start()
-    except Exception as e:
-        print(f"[database] Failed to start Render sync: {e}", flush=True)
 
 if __name__ == "__main__":
     init_db()

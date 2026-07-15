@@ -10,4 +10,3 @@ pymupdf
 pymupdf4llm
 python-multipart
 websockets
-psycopg2-binary
