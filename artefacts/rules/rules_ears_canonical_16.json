@@ -1,0 +1,193 @@
+{
+  "_meta": {
+    "source": "EARS: The Easy Approach to Requirements Syntax, John Terzakis, Intel Corporation, ICCGI 2013 (originally Mavin et al., Rolls-Royce PLC, RE'09)",
+    "design_note": "This rule set intentionally has NO overlapping rules. Each requirement gets exactly ONE pattern classification (EARS-P1 through EARS-P6 are mutually exclusive - only one should ever be the 'correct' pattern for a given requirement) plus independent checks against the ten orthogonal quality attributes (EARS-Q1 through EARS-Q10). Do not flag more than one pattern rule on the same requirement; instead identify which single pattern it SHOULD be and flag a mismatch if it uses the wrong one."
+  },
+  "EARS-P1": {
+    "rule_name": "ubiquitous_pattern",
+    "category": "EARS Pattern Classification",
+    "description": "A Ubiquitous requirement states a fundamental, always-true system property. It has no trigger, no precondition, and no state qualifier, and needs no pattern keyword. Format: 'The <system name> shall <system response>'.",
+    "trigger_criteria": [
+      "Requirement is written in the bare 'shall' form but is NOT actually universal - it depends on an unstated trigger, state, or optional feature (this is the single most common misclassification; question every apparently-ubiquitous requirement before accepting it as such)",
+      "Requirement legitimately has no trigger/state/feature dependency but is written with an unnecessary pattern keyword (WHEN/IF/WHILE/WHERE) instead of the plain form"
+    ],
+    "example_violation": "The system shall display the current vehicle speed. (this looks ubiquitous but almost certainly depends on an unstated state, e.g. ignition on, or trigger, e.g. a display refresh event)",
+    "example_compliant": "THE INSTRUMENT CLUSTER SHALL be certified to IEC 60950 for electrical safety.",
+    "disambiguation": "Before classifying a requirement as Ubiquitous, actively test it: does it require an event to execute, does it denote a state, or does it denote an optional feature? If yes to any, it is NOT ubiquitous and belongs to EARS-P2/P3/P4/P5 instead. Most requirements are NOT ubiquitous - treat this classification as the exception, not the default."
+  },
+  "EARS-P2": {
+    "rule_name": "event_driven_pattern",
+    "category": "EARS Pattern Classification",
+    "description": "An Event-Driven requirement is initiated when and only when a trigger occurs or is detected. Uses the 'WHEN' keyword. Format: 'WHEN <trigger> <optional precondition>, THE <system name> SHALL <system response>'.",
+    "trigger_criteria": [
+      "Requirement describes a response to a discrete, expected event but does not use 'WHEN', or omits the trigger clause",
+      "'WHEN' is used but the underlying condition is actually a fault/error condition, which should instead be EARS-P3 ('IF...THEN')"
+    ],
+    "example_violation": "The system shall load the driver profile for a detected key fob.",
+    "example_compliant": "WHEN a registered key fob is detected within range, THE BODY CONTROL MODULE SHALL load the associated driver seat and mirror profile within [500 ms].",
+    "disambiguation": "Reserve WHEN strictly for normal, expected, in-scope events. If the trigger is an undesired/abnormal condition (a fault, failure, or error), it belongs to EARS-P3, not here."
+  },
+  "EARS-P3": {
+    "rule_name": "unwanted_behavior_pattern",
+    "category": "EARS Pattern Classification",
+    "description": "An Unwanted Behavior requirement handles error conditions, failures, faults, disturbances, and other undesired events. Uses the 'IF' and 'THEN' keywords. Format: 'IF <unwanted condition or event>, THEN THE <system name> SHALL <system response>'.",
+    "trigger_criteria": [
+      "Requirement describes handling of a fault/error/undesired condition but does not use the 'IF...THEN' construction",
+      "'IF...THEN' is used but the condition described is actually a normal, expected event, which should instead be EARS-P2 ('WHEN')"
+    ],
+    "example_violation": "When the wheel speed sensor signal is lost, the system shall set a diagnostic trouble code.",
+    "example_compliant": "IF the wheel speed sensor signal is lost for more than [100 ms], THEN THE ABS MODULE SHALL set diagnostic trouble code C0035 within [50 ms].",
+    "disambiguation": "Reserve IF...THEN strictly for undesired/abnormal conditions: faults, failures, out-of-range values, disturbances. If the condition is a normal expected event, it belongs to EARS-P2, not here."
+  },
+  "EARS-P4": {
+    "rule_name": "state_driven_pattern",
+    "category": "EARS Pattern Classification",
+    "description": "A State-Driven requirement is triggered while the system is in a specific state. Uses the 'WHILE' keyword (or optionally 'DURING'). Format: 'WHILE <system state>, THE <system name> SHALL <system response>'.",
+    "trigger_criteria": [
+      "Requirement's applicability depends on the system being in a persistent, ongoing state (a mode, a condition that holds true over an interval) but does not use 'WHILE'",
+      "'WHILE' is used to describe a discrete one-time event rather than a persisting state, which should instead be EARS-P2"
+    ],
+    "example_violation": "In Park mode, the transmission control module disables the reverse gear signal.",
+    "example_compliant": "WHILE the transmission is in Park, THE TRANSMISSION CONTROL MODULE SHALL disable the reverse gear engagement signal.",
+    "disambiguation": "WHILE describes a condition that persists over an interval of time and can be checked as true/false at any moment (a mode or state). A one-time occurrence is an event and belongs to EARS-P2 or EARS-P3 instead."
+  },
+  "EARS-P5": {
+    "rule_name": "optional_feature_pattern",
+    "category": "EARS Pattern Classification",
+    "description": "An Optional Feature requirement is invoked only in system configurations that include a particular optional feature. Uses the 'WHERE' keyword. Format: 'WHERE <feature is included>, THE <system name> SHALL <system response>'.",
+    "trigger_criteria": [
+      "Requirement's applicability depends on an optional, build-time configuration item (e.g. a trim-level option, an installed hardware module) but does not use 'WHERE'",
+      "'WHERE' is used to describe a runtime operating condition rather than a configuration-time option, which should instead be EARS-P4"
+    ],
+    "example_violation": "For vehicles equipped with a heads-up display, the software shall project the current speed onto the windshield.",
+    "example_compliant": "WHERE the Heads-Up Display feature is installed, THE INFOTAINMENT SYSTEM SHALL project the current vehicle speed onto the windshield.",
+    "disambiguation": "WHERE identifies a build/configuration-time option present or absent for a given vehicle. A condition that changes during vehicle operation (a mode) is a state and belongs to EARS-P4 instead."
+  },
+  "EARS-P6": {
+    "rule_name": "complex_pattern",
+    "category": "EARS Pattern Classification",
+    "description": "A Complex requirement describes conditional events involving multiple triggers, states, and/or optional features together, using a combination of WHEN, IF/THEN, WHILE, and WHERE.",
+    "trigger_criteria": [
+      "Requirement legitimately combines two or more condition types (state + trigger, feature + trigger, etc.) but the clauses are run together as unstructured prose rather than clearly separated by their correct keywords",
+      "A single-condition requirement is unnecessarily forced into a multi-keyword complex form when one of EARS-P2 through EARS-P5 alone would suffice"
+    ],
+    "example_violation": "If the vehicle has adaptive cruise control and is moving above 30 kph and the lead vehicle brakes hard, the system should slow down.",
+    "example_compliant": "WHERE the Adaptive Cruise Control feature is installed, WHILE the vehicle speed is above [30 kph], WHEN the lead vehicle deceleration exceeds [0.3 g], THE ACC MODULE SHALL apply the service brakes within [200 ms].",
+    "disambiguation": "Only classify as Complex when two or more genuinely distinct condition types co-occur. If a single condition type suffices, use the simpler EARS-P2/P3/P4/P5 pattern instead of forcing a hybrid structure."
+  },
+  "EARS-Q1": {
+    "rule_name": "complete",
+    "category": "Quality Attribute",
+    "description": "A requirement is complete when it contains sufficient detail to guide the work of those who use it, leaving no gap that forces a designer or developer to guess.",
+    "trigger_criteria": [
+      "Requirement contains a placeholder, TBD, or an undefined parameter that a reader would have to guess or invent",
+      "Requirement omits a necessary detail (a threshold, a count, a condition) that is needed for someone to implement or test it"
+    ],
+    "example_violation": "The system shall allow a TBD number of failed start attempts before locking out the ignition.",
+    "example_compliant": "WHEN more than [3] failed start attempts occur within [30 s], THE IMMOBILIZER MODULE SHALL lock out the ignition for [5 minutes].",
+    "disambiguation": "Independent of EARS pattern classification - a requirement can use the correct pattern keyword and still be incomplete if it leaves a required detail unspecified."
+  },
+  "EARS-Q2": {
+    "rule_name": "correct",
+    "category": "Quality Attribute",
+    "description": "A requirement is correct when it is error-free and matches the actual system behavior or constraint intended, as verifiable against source materials or subject matter experts.",
+    "trigger_criteria": [
+      "Requirement contains a factual, numerical, or logical error that conflicts with known source material, specifications, or domain constraints"
+    ],
+    "example_violation": "THE FUEL GAUGE SHALL indicate a range of 0 to 150 liters. (the tank capacity per the vehicle spec is 60 liters)",
+    "example_compliant": "THE FUEL GAUGE SHALL indicate a range of 0 to 60 liters, consistent with the vehicle fuel tank capacity specification.",
+    "disambiguation": "Correctness is a factual-accuracy check against source truth, distinct from ambiguity (EARS-Q7) or internal consistency (EARS-Q9)."
+  },
+  "EARS-Q3": {
+    "rule_name": "concise",
+    "category": "Quality Attribute",
+    "description": "A requirement is concise when it contains just the needed information expressed in as few words as possible, free of compound statements, embedded rationale, or overly complex grammar.",
+    "trigger_criteria": [
+      "Requirement bundles multiple distinct requirements into one compound statement",
+      "Requirement embeds rationale, background, or design justification inline instead of expressing only the requirement itself",
+      "Requirement uses unnecessarily complex or wordy grammar that could be simplified without losing meaning"
+    ],
+    "example_violation": "The advanced infotainment software, developed by the multimedia team to improve the driving experience, shall display the current outside temperature when the well-designed climate menu is opened by the driver.",
+    "example_compliant": "WHEN the driver opens the climate menu, THE INFOTAINMENT SYSTEM SHALL display the current outside temperature.",
+    "disambiguation": "Distinct from EARS-P6 (Complex pattern), which concerns legitimate multiple condition types; this rule concerns unnecessary wordiness and bundling regardless of pattern type."
+  },
+  "EARS-Q4": {
+    "rule_name": "feasible",
+    "category": "Quality Attribute",
+    "description": "A requirement is feasible if at least one design and implementation exists (or can reasonably be shown, e.g. via prototyping or analysis) to satisfy it.",
+    "trigger_criteria": [
+      "Requirement demands a capability with no known or plausible implementation path (e.g. an unbounded resource, a physically unachievable tolerance)"
+    ],
+    "example_violation": "THE TELEMATICS MODULE SHALL support an unlimited number of simultaneously connected Bluetooth devices.",
+    "example_compliant": "THE TELEMATICS MODULE SHALL support up to [5] simultaneously connected Bluetooth devices.",
+    "disambiguation": "Feasibility concerns whether the requirement can physically/technically be implemented at all, distinct from EARS-Q1 (completeness of the stated detail) and EARS-Q10 (realistic absolute claims are also covered under this rule when infeasibility stems from an unbounded/absolute claim)."
+  },
+  "EARS-Q5": {
+    "rule_name": "necessary",
+    "category": "Quality Attribute",
+    "description": "A requirement is necessary when it is market-competitive, traceable to a stakeholder need, establishes a genuine differentiator, or is dictated by business/regulatory strategy - not included merely as an unbounded or speculative goal.",
+    "trigger_criteria": [
+      "Requirement's scope goes beyond any identifiable stakeholder need, regulation, or business driver (e.g. supporting compatibility with every possible past variant rather than a defined, current set)"
+    ],
+    "example_violation": "THE DIAGNOSTIC TOOL SHALL be compatible with every diagnostic protocol ever used by the company.",
+    "example_compliant": "THE DIAGNOSTIC TOOL SHALL be compatible with UDS (ISO 14229) and OBD-II (SAE J1979) protocols.",
+    "disambiguation": "This is a scope-justification check, distinct from feasibility (EARS-Q4); a requirement can be technically feasible yet still unnecessary because its scope isn't tied to any real need."
+  },
+  "EARS-Q6": {
+    "rule_name": "prioritized",
+    "category": "Quality Attribute",
+    "description": "A requirement is prioritized when it is ranked or ordered according to its relative importance, since all requirements compete for limited engineering resources.",
+    "trigger_criteria": [
+      "Requirement record has no priority classification (e.g. High/Medium/Low, or Essential/Desirable/Nice-to-have) associated with it in the requirement set metadata",
+      "Requirement set treats all requirements as equally critical with no differentiation"
+    ],
+    "example_violation": "Requirement set has no Priority field, or every requirement is marked 'Critical'.",
+    "example_compliant": "SYS_REQ_0045 is tagged Priority: High (safety-related); SYS_REQ_0046 is tagged Priority: Low (convenience feature).",
+    "disambiguation": "This is a requirement-set/metadata check, not a wording check on the statement text itself."
+  },
+  "EARS-Q7": {
+    "rule_name": "unambiguous",
+    "category": "Quality Attribute",
+    "description": "A requirement is unambiguous when it possesses a single interpretation, independent of the reader's background.",
+    "trigger_criteria": [
+      "Requirement uses a subjective or vague qualifier (e.g. 'quickly', 'user-friendly', 'as needed') that different readers could interpret differently",
+      "Requirement lacks a measurable/verifiable criterion where multiple readings are otherwise possible"
+    ],
+    "example_violation": "THE PARKING ASSIST SYSTEM SHALL respond quickly to detected obstacles.",
+    "example_compliant": "WHEN an obstacle is detected within [1 m], THE PARKING ASSIST SYSTEM SHALL apply the brakes within [200 ms] in [95%] of test cycles.",
+    "disambiguation": "Distinct from EARS-Q1 (completeness of detail) - a requirement can already list every needed field yet still use a subjective term that different readers would interpret differently."
+  },
+  "EARS-Q8": {
+    "rule_name": "verifiable",
+    "category": "Quality Attribute",
+    "description": "A requirement is verifiable if it can be proved that it was correctly implemented, via demonstration, analysis, inspection, or testing.",
+    "trigger_criteria": [
+      "Requirement describes an outcome with no defined method or measurable criterion by which correct implementation could be demonstrated, analyzed, inspected, or tested"
+    ],
+    "example_violation": "THE SEAT MEMORY FEATURE SHALL be easy to configure for the driver.",
+    "example_compliant": "THE SEAT MEMORY FEATURE SHALL save the current seat position to one of [3] memory slots within [2 s] of the driver pressing and holding the SET button.",
+    "disambiguation": "Overlaps in spirit with EARS-Q7 (unambiguous) but is specifically about the existence of a verification method, not just interpretive clarity; a requirement can be unambiguous in meaning yet still lack any defined way to verify it was met."
+  },
+  "EARS-Q9": {
+    "rule_name": "consistent",
+    "category": "Quality Attribute",
+    "description": "A requirement is consistent when it does not conflict with any other requirement at any level of the requirement set.",
+    "trigger_criteria": [
+      "Requirement directly contradicts another requirement in the set (e.g. one requirement restricts an input format that another requirement requires)"
+    ],
+    "example_violation": "SYS_REQ_0010: the system shall only accept whole-number odometer entries. SYS_REQ_0011: the system shall accept odometer entries in tenths of a mile.",
+    "example_compliant": "SYS_REQ_0010: the system shall only accept whole-number odometer entries, except when the tenths-of-a-mile entry mode (SYS_REQ_0011) is selected.",
+    "disambiguation": "Cross-requirement check requiring comparison against the full requirement set, not evaluable from a single requirement in isolation; distinct from EARS-Q2 (correctness against source truth)."
+  },
+  "EARS-Q10": {
+    "rule_name": "traceable",
+    "category": "Quality Attribute",
+    "description": "A requirement is traceable when it is uniquely and persistently identified with a tag, enabling change-impact assessment, coverage analysis, and scope management across the requirement set.",
+    "trigger_criteria": [
+      "Requirement has no unique, persistent identifier (ID or name) associated with it"
+    ],
+    "example_violation": "The system shall prompt the driver for a PIN before enabling valet mode. (no requirement ID present)",
+    "example_compliant": "SYS_REQ_VALET_003: THE SYSTEM SHALL prompt the driver for a PIN before enabling valet mode.",
+    "disambiguation": "This is a metadata/identification check, independent of the wording quality of the requirement statement itself."
+  }
+}

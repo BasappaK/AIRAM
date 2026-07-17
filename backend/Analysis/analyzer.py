@@ -21,7 +21,7 @@ class RequirementAnalyzer:
         return correct_requirements(requirements, self.llm, progress_callback, rag, mode, selected_collections, batch_size)
 
     def compare_traceability(self, swe1_reqs: List[Requirement], swe2_reqs: List[Requirement]) -> Dict[str, Any]:
-        return compare_traceability(swe1_reqs, swe2_reqs)
+        return compare_traceability(swe1_reqs, swe2_reqs, self.llm)
 
 
 

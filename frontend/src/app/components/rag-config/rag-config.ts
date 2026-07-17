@@ -9,83 +9,115 @@ import { ApiService } from '../../services/api.service';
   imports: [CommonModule, FormsModule],
   template: `
     <div class="rag-container">
-      <div class="grid grid-2">
-        <!-- Training & Chunking logs card -->
-        <div class="card">
-          <div class="card-title">📚 Document Ingestion & RAG Training</div>
-          <p class="section-desc">Upload guideline PDF or JSON files (INCOSE, ASPICE) to train the RAG database progressively.</p>
-          
-          <div class="dropzone" (click)="fileInput.click()">
-            <span class="dropzone-icon">📥</span>
-            <span class="dropzone-text">Click to choose a guideline file (.json, .pdf, .txt)</span>
-            <input #fileInput type="file" (change)="onFileSelected($event)" style="display: none;" accept=".json,.pdf,.txt">
-          </div>
-          
-          <!-- File selection details -->
-          <div *ngIf="selectedFile && !showConfigDialog" class="file-details" style="display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 12px;">
-            <div>Selected: <strong>{{ selectedFile.name }}</strong> ({{ (selectedFile.size / 1024) | number:'1.0-1' }} KB)</div>
-            <div style="font-size: 0.8rem; color: var(--text-secondary);">
-              Target Collection: <strong>{{ collectionMode === 'create' ? newCollectionName : selectedCollection }}</strong>
-              <span *ngIf="isPdf"> | Pages: <strong>{{ startPage }} to {{ endPage }}</strong></span>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 4px;">
-              <button class="btn btn-primary btn-sm" style="flex: 1;" [disabled]="isTraining" (click)="startIngestion()">Start Ingestion</button>
-              <button class="btn btn-secondary btn-sm" [disabled]="isTraining" (click)="showConfigDialog = true">Edit Config</button>
-            </div>
-          </div>
+      <div style="margin-bottom: 24px;">
+        <h2 class="section-title" style="margin-bottom: 4px;">Knowledge Engine Configuration</h2>
+        <p class="section-desc">Ingest standards and evaluate semantic search retrieval.</p>
+      </div>
 
-          <!-- Progressive Training Log -->
-          <div *ngIf="isTraining || logs.length > 0" class="progress-section">
-            <div class="progress-meta">
-              <span>Ingestion Progress</span>
-              <span>{{ progressPercent }}% ({{ processedChunks }}/{{ totalChunks }} chunks)</span>
-            </div>
-            <div class="progress-bar-bg">
-              <div class="progress-bar" [style.width.%]="progressPercent"></div>
+      <div class="grid grid-2" style="align-items: start;">
+        
+        <!-- Left Column: Ingestion & Logs -->
+        <div style="display: flex; flex-direction: column; gap: 24px;">
+          
+          <!-- Document Ingestion Card -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 20px;">
+              Document Ingestion & Training
             </div>
             
-            <div class="log-container">
-              <div class="log-title">Progressive DB Upsert Logs:</div>
-              <div class="log-window">
-                <div *ngFor="let log of logs" class="log-entry">
-                  <span class="log-time">{{ log.time | date:'HH:mm:ss' }}</span>
-                  <span class="log-msg">{{ log.message }}</span>
+            <div class="dropzone" (click)="fileInput.click()">
+              <div class="dropzone-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+              </div>
+              <div class="dropzone-text">Click or drag to upload standards</div>
+              <div class="dropzone-subtext">.pdf, .txt, .json formats supported</div>
+              <input #fileInput type="file" (change)="onFileSelected($event)" style="display: none;" accept=".json,.pdf,.txt">
+            </div>
+            
+            <!-- File selection details -->
+            <div *ngIf="selectedFile && !showConfigDialog" class="file-details">
+              <div style="display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); padding: 12px 16px; border-radius: 6px; background: var(--bg-card); margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                  <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-primary);">{{ selectedFile.name }}</span>
                 </div>
+                <button class="icon-btn-minimal" (click)="selectedFile = null; logs = [];" aria-label="Remove file">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              
+              <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 16px;">
+                <div style="color: var(--text-secondary);">Target: <strong style="color: var(--text-primary);">{{ collectionMode === 'create' ? newCollectionName : selectedCollection }}</strong></div>
+                <div *ngIf="isPdf" style="color: var(--text-secondary);">Pages: <strong style="color: var(--text-primary);">{{ startPage }}-{{ endPage }}</strong></div>
+              </div>
+              
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" style="flex: 1;" [disabled]="isTraining" (click)="startIngestion()">Start Ingestion</button>
+                <button class="btn btn-secondary" [disabled]="isTraining" (click)="showConfigDialog = true">Edit Config</button>
+              </div>
+            </div>
+
+            <!-- Progressive Training Log -->
+            <div *ngIf="isTraining || logs.length > 0" class="progress-section" style="margin-top: 24px;">
+              <div class="progress-meta">
+                <span>Ingestion Progress</span>
+                <span>{{ progressPercent }}% ({{ processedChunks }}/{{ totalChunks }} chunks)</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar" [style.width.%]="progressPercent"></div>
               </div>
             </div>
           </div>
+          
+          <!-- Terminal Logs -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 12px;">
+              Training Progress Log
+            </div>
+            <div class="log-container">
+              <div class="log-window">
+                <div *ngFor="let log of logs" class="log-entry">
+                  <span class="log-time">[{{ log.time | date:'HH:mm:ss' }}]</span>
+                  <span class="log-msg">{{ log.message }}</span>
+                </div>
+                <div *ngIf="logs.length === 0" style="color: #64748b; font-style: italic;">Awaiting ingestion task...</div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
-        <!-- Metrics and Evaluation Search Bar -->
-        <div class="grid" style="gap: 20px;">
+        <!-- Right Column: Metrics & Evaluation -->
+        <div style="display: flex; flex-direction: column; gap: 24px;">
           <!-- Metrics card -->
-          <div class="card">
-            <div class="card-title">📈 Current Chunking Metrics</div>
-            <div class="metrics-grid">
-              <div class="metric-item">
-                <span class="metric-lbl">Total Chunks:</span>
-                <span class="metric-val">{{ metrics.total_chunks }}</span>
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 20px;">
+              Chunking Metrics
+            </div>
+            
+            <div style="display: flex; gap: 16px;">
+              <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; background: var(--bg-card);">
+                <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-bottom: 8px;">Total Chunks</div>
+                <div style="font-size: 1.8rem; font-weight: 700; color: var(--text-primary);">{{ metrics.total_chunks }}</div>
               </div>
-              <div class="metric-item">
-                <span class="metric-lbl">Avg Chunk Size:</span>
-                <span class="metric-val">{{ metrics.avg_tokens }} tokens</span>
-              </div>
-              <div class="metric-item">
-                <span class="metric-lbl">Total Tokens:</span>
-                <span class="metric-val">{{ metrics.total_tokens }}</span>
+              
+              <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; background: var(--bg-card);">
+                <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-bottom: 8px;">Total Tokens</div>
+                <div style="font-size: 1.8rem; font-weight: 700; color: var(--text-primary);">{{ metrics.total_tokens | number }}</div>
               </div>
             </div>
           </div>
 
           <!-- Retrieval Search Bar Evaluation -->
-          <div class="card">
-            <div class="card-title">🔍 Manual Retrieval Evaluation</div>
-            <p class="section-desc">Search guidelines to check the semantic relevance and retrieval score from Qdrant.</p>
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 12px;">
+              Manual Retrieval Evaluation
+            </div>
+            <p class="section-desc" style="margin-bottom: 20px;">Search guidelines to check semantic relevance and retrieval accuracy.</p>
             
-            <div class="form-group" style="margin-bottom: 12px;">
-              <label class="form-label">Target Collection to Search:</label>
-              <select [(ngModel)]="searchCollection" (change)="onSearchCollectionChanged()">
-                <option *ngFor="let col of collections" [value]="col">{{ col }}</option>
+            <div class="form-group" style="margin-bottom: 16px;">
+              <select [(ngModel)]="searchCollection" (change)="onSearchCollectionChanged()" style="width: 100%; max-width: 300px; font-size: 0.8rem; padding: 8px 12px;">
+                <option *ngFor="let col of collections" [value]="col">Target: {{ col }}</option>
               </select>
             </div>
 
@@ -96,11 +128,14 @@ import { ApiService } from '../../services/api.service';
             
             <div *ngIf="searchResults.length > 0" class="search-results">
               <div *ngFor="let result of searchResults" class="result-card">
-                <div class="result-header">
-                  <span class="result-doc">Source: {{ result.doc_name }}</span>
+                <div class="result-text">"{{ result.text }}"</div>
+                <div class="result-footer">
+                  <span class="result-doc">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; display: inline-block; vertical-align: text-bottom;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                    {{ result.doc_name }}
+                  </span>
                   <span class="result-score">Score: <strong>{{ result.score | number:'1.3-3' }}</strong></span>
                 </div>
-                <div class="result-text">"{{ result.text }}"</div>
               </div>
             </div>
             <div *ngIf="searched && searchResults.length === 0" class="no-results">
@@ -180,134 +215,131 @@ import { ApiService } from '../../services/api.service';
     </div>
   `,
   styles: [`
-    .section-desc {
-      font-size: 0.8rem;
+    .icon-btn-minimal {
+      background: transparent;
+      border: none;
       color: var(--text-secondary);
-      margin-bottom: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+      padding: 4px;
+      border-radius: 4px;
+    }
+    .icon-btn-minimal:hover {
+      color: var(--text-primary);
+      background-color: #f1f5f9;
     }
     .file-details {
-      margin-top: 12px;
-      background: var(--bg-primary);
-      padding: 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      border: 1px solid var(--border-color);
-    }
-    .btn-sm {
-      padding: 6px 12px;
-      font-size: 0.8rem;
-    }
-    .progress-section {
       margin-top: 20px;
     }
     .progress-meta {
       display: flex;
       justify-content: space-between;
-      font-size: 0.8rem;
-      font-weight: 500;
-      margin-bottom: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
     }
     .progress-bar-bg {
-      height: 8px;
-      background: #e9ecef;
-      border-radius: 4px;
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
       overflow: hidden;
-      margin-bottom: 16px;
     }
     .progress-bar {
       height: 100%;
-      background: var(--color-success);
+      background: var(--color-primary);
       transition: width 0.2s ease-in-out;
     }
     .log-container {
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      background: #212529;
-      color: #f8f9fa;
-      padding: 12px;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 16px;
     }
     .log-window {
-      height: 160px;
+      height: 200px;
       overflow-y: auto;
-      font-family: monospace;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
       font-size: 0.75rem;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
     }
     .log-entry {
       display: flex;
       gap: 12px;
+      line-height: 1.4;
     }
     .log-time {
-      color: #6c757d;
+      color: #64748b;
+      flex-shrink: 0;
     }
     .log-msg {
-      color: #a3cfbb;
+      color: #10b981;
+      word-break: break-word;
     }
-    .metrics-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .metric-item {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.85rem;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 8px;
-    }
-    .metric-item:last-child {
-      border-bottom: none;
-    }
-    .metric-lbl {
-      color: var(--text-secondary);
-    }
-    .metric-val {
-      font-weight: 600;
-      color: var(--text-primary);
-    }
+    
     .search-box {
       display: flex;
-      gap: 10px;
-      margin-bottom: 16px;
+      gap: 12px;
+      margin-bottom: 20px;
     }
     .search-box input {
       flex-grow: 1;
     }
     .search-results {
-      max-height: 250px;
+      max-height: 350px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
+      padding-right: 4px;
     }
     .result-card {
       border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 12px;
-      background-color: #fafafa;
+      border-radius: 8px;
+      padding: 16px;
+      background-color: var(--bg-card);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
-    .result-header {
+    .result-text {
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      font-style: italic;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .result-footer {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       font-size: 0.75rem;
+      border-top: 1px solid var(--border-color);
+      padding-top: 12px;
+    }
+    .result-doc {
       color: var(--text-secondary);
-      margin-bottom: 6px;
+      font-weight: 500;
     }
     .result-score {
       color: var(--color-primary);
-    }
-    .result-text {
-      font-size: 0.8rem;
-      color: var(--text-primary);
-      font-style: italic;
+      background: #eff6ff;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 600;
     }
     .no-results {
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       color: var(--text-secondary);
       text-align: center;
-      padding: 16px;
+      padding: 24px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px dashed var(--border-color);
     }
 
     /* Modal dialog styling overlay */
@@ -318,8 +350,8 @@ import { ApiService } from '../../services/api.service';
       width: 100vw;
       height: 100vh;
       background: rgba(15, 23, 42, 0.45);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -328,8 +360,7 @@ import { ApiService } from '../../services/api.service';
     }
     
     .modal-card {
-      background: rgba(255, 255, 255, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.4);
+      background: var(--bg-card);
       border-radius: 12px;
       width: 90%;
       max-width: 550px;
@@ -340,7 +371,7 @@ import { ApiService } from '../../services/api.service';
     }
     
     .modal-header {
-      padding: 16px 20px;
+      padding: 20px 24px;
       border-bottom: 1px solid var(--border-color);
       display: flex;
       justify-content: space-between;
@@ -369,25 +400,28 @@ import { ApiService } from '../../services/api.service';
     }
     
     .modal-body {
-      padding: 20px;
+      padding: 24px;
       max-height: 70vh;
       overflow-y: auto;
     }
     
     .modal-body h4 {
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 600;
       color: var(--text-primary);
-      margin-top: 16px;
-      margin-bottom: 8px;
+      margin-top: 20px;
+      margin-bottom: 12px;
     }
     
     .modal-footer {
-      padding: 16px 20px;
+      padding: 16px 24px;
       border-top: 1px solid var(--border-color);
       display: flex;
       justify-content: flex-end;
-      gap: 10px;
+      gap: 12px;
+      background: #f8fafc;
+      border-bottom-left-radius: 12px;
+      border-bottom-right-radius: 12px;
     }
     
     .radio-lbl {
@@ -396,6 +430,7 @@ import { ApiService } from '../../services/api.service';
       gap: 8px;
       font-size: 0.85rem;
       cursor: pointer;
+      color: var(--text-primary);
     }
 
     @keyframes fadeIn {

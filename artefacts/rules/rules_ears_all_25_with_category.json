@@ -1,0 +1,294 @@
+{
+  "EARS-001": {
+    "rule_name": "ubiquitous_pattern",
+    "category": "Pattern Structure",
+    "description": "State requirements with no trigger and no state as a Ubiquitous requirement using the pattern 'THE <SYSTEM> SHALL <ACTION>', for behavior that must always hold true.",
+    "trigger_criteria": [
+      "Requirement describes a continuously true property/behavior (no precondition) but is not written as 'THE <SYSTEM> SHALL <ACTION>'",
+      "Requirement is written as ubiquitous but actually depends on an unstated trigger or state, which should instead use EARS-002/003/004"
+    ],
+    "example_violation": "The system always processes VehSpd.",
+    "example_compliant": "THE VEHICLE SPEED MODULE SHALL process the vehicle speed signal every [20 ms].",
+    "disambiguation": "Use only for behavior with no conditional trigger and no state qualifier. If a trigger or state exists, use EARS-002 (event-driven), EARS-003 (unwanted behavior), or EARS-004 (state-driven) instead."
+  },
+  "EARS-002": {
+    "rule_name": "event_driven_pattern",
+    "category": "Pattern Structure",
+    "description": "State requirements triggered by a detectable event using the pattern 'WHEN <trigger>, THE <SYSTEM> SHALL <ACTION>'.",
+    "trigger_criteria": [
+      "Requirement describes a system response to a discrete, instantaneous event but omits the 'WHEN' keyword or omits the trigger clause entirely",
+      "Trigger is expressed with a different keyword (e.g. 'IF') when the underlying intent is a normal/expected event rather than an unwanted condition"
+    ],
+    "example_violation": "The system shall deploy the airbag on impact detection.",
+    "example_compliant": "WHEN the crash sensor detects an impact exceeding [30 g], THE RESTRAINT CONTROL MODULE SHALL deploy the airbag within [20 ms].",
+    "disambiguation": "Reserve 'WHEN' for expected, in-scope events. If the trigger represents a fault or undesired condition, use EARS-003 (unwanted behavior) with 'IF...THEN' instead."
+  },
+  "EARS-003": {
+    "rule_name": "unwanted_behavior_pattern",
+    "category": "Pattern Structure",
+    "description": "State requirements responding to an undesired or abnormal condition using the pattern 'IF <trigger>, THEN THE <SYSTEM> SHALL <ACTION>'.",
+    "trigger_criteria": [
+      "Requirement describes a fault, failure, or abnormal condition and its required response, but does not use the 'IF...THEN' construction",
+      "'WHEN' is used for what is clearly a fault/error condition instead of 'IF...THEN'"
+    ],
+    "example_violation": "When VehSpd is out of range, the system shall set a DTC.",
+    "example_compliant": "IF the vehicle speed signal is out of range [0 kph, 250 kph], THEN THE SYSTEM SHALL set the diagnostic trouble code for vehicle speed out-of-range within [100 ms].",
+    "disambiguation": "Distinct from EARS-002: use 'IF...THEN' specifically for undesired/abnormal triggers (faults, errors, out-of-range values); use 'WHEN' (EARS-002) for normal, expected events."
+  },
+  "EARS-004": {
+    "rule_name": "state_driven_pattern",
+    "category": "Pattern Structure",
+    "description": "State requirements that apply only while the system is in a specific, verifiable state using the pattern 'WHILE <state>, THE <SYSTEM> SHALL <ACTION>'.",
+    "trigger_criteria": [
+      "Requirement's applicability depends on a continuous system state or mode (e.g. 'Drive mode', 'engine running', 'ignition on') but does not use the 'WHILE' keyword",
+      "State condition is implied by context rather than explicitly stated in the requirement"
+    ],
+    "example_violation": "In Drive mode, the system processes the brake pedal position.",
+    "example_compliant": "WHILE the transmission is in Drive mode, THE BRAKE CONTROL MODULE SHALL process the brake pedal position signal within [10 ms].",
+    "disambiguation": "Use 'WHILE' only for a state that persists over an interval and can be objectively verified as active or inactive at any point in time; a one-time occurrence belongs under EARS-002 or EARS-003, not this pattern."
+  },
+  "EARS-005": {
+    "rule_name": "optional_feature_pattern",
+    "category": "Pattern Structure",
+    "description": "State requirements that apply only when an optional feature is present in the product configuration using the pattern 'WHERE <feature is included>, THE <SYSTEM> SHALL <ACTION>'.",
+    "trigger_criteria": [
+      "Requirement's applicability depends on an optional/configurable feature (e.g. adaptive cruise control, heated seats) but does not use the 'WHERE' keyword",
+      "'WHERE' clause names a runtime state/mode rather than a build-time/configuration option (should instead be EARS-004)"
+    ],
+    "example_violation": "For vehicles with adaptive cruise control, the system shall maintain the set following distance.",
+    "example_compliant": "WHERE the Adaptive Cruise Control feature is installed, THE ACC MODULE SHALL maintain the set following distance within [+/-0.5 s].",
+    "disambiguation": "Distinct from EARS-004: 'WHERE' identifies a configuration-time option present or absent for a given vehicle build; 'WHILE' (EARS-004) identifies a runtime operating state that changes during vehicle operation."
+  },
+  "EARS-006": {
+    "rule_name": "complex_hybrid_pattern",
+    "category": "Pattern Structure",
+    "description": "State requirements combining state, optional feature, and/or trigger clauses using the full EARS complex/hybrid pattern, e.g. 'WHERE <feature>, WHILE <state>, WHEN <trigger>, THE <SYSTEM> SHALL <ACTION>'.",
+    "trigger_criteria": [
+      "Requirement legitimately combines more than one condition type (state + trigger, or feature + state) but does not clearly separate/label each clause with its correct EARS keyword",
+      "Combined clauses are run together as prose rather than as distinct, keyword-tagged clauses"
+    ],
+    "example_violation": "If the vehicle has ACC and is in Drive mode and the lead vehicle brakes suddenly, the system shall apply the brakes.",
+    "example_compliant": "WHERE the Adaptive Cruise Control feature is installed, WHILE the system is in Drive mode, WHEN the lead vehicle deceleration exceeds [0.3 g], THE ACC MODULE SHALL apply the service brakes within [200 ms].",
+    "disambiguation": "Only use this pattern when two or more condition types genuinely co-occur. If a single condition type suffices, prefer the simpler EARS-002/003/004/005 pattern instead of forcing a hybrid structure."
+  },
+  "EARS-007": {
+    "rule_name": "correct_keyword_selection",
+    "category": "Keyword Usage",
+    "description": "Select the EARS keyword (WHEN, IF, WHILE, WHERE) that matches the semantic nature of the condition: event, fault, state, or optional feature respectively.",
+    "trigger_criteria": [
+      "'WHEN' is used for a fault/abnormal condition (should be 'IF...THEN')",
+      "'IF...THEN' is used for a normal, expected event (should be 'WHEN')",
+      "'WHILE' is used for a discrete one-time event rather than a persistent state (should be 'WHEN')",
+      "'WHERE' is used for a runtime condition rather than an optional configuration item (should be 'WHILE')"
+    ],
+    "example_violation": "WHEN the coolant temperature sensor fails, THE SYSTEM SHALL illuminate the warning lamp.",
+    "example_compliant": "IF the coolant temperature sensor signal is invalid, THEN THE SYSTEM SHALL illuminate the coolant warning lamp within [500 ms].",
+    "disambiguation": "This is a keyword-semantics check distinct from EARS-001 through EARS-006, which check overall pattern structure. A requirement can have the right overall shape but still use the wrong keyword for its condition type."
+  },
+  "EARS-008": {
+    "rule_name": "shall_usage",
+    "category": "Keyword Usage",
+    "description": "Use 'SHALL' exactly once per requirement statement to express the single mandatory system response; do not use 'should', 'will', 'must', or multiple 'SHALL' clauses joined together.",
+    "trigger_criteria": [
+      "Statement uses 'should', 'will', 'must', or 'may' where a mandatory requirement is intended instead of 'SHALL'",
+      "Statement contains two or more 'SHALL' clauses joined by 'and'/'or', indicating more than one requirement packed into one statement"
+    ],
+    "example_violation": "THE SYSTEM SHALL detect the fault and it must set the DTC.",
+    "example_compliant": "THE SYSTEM SHALL detect the fault within [10 ms].",
+    "disambiguation": "Overlaps with EARS-016 (single response action): EARS-008 focuses narrowly on modal-verb word choice and count of 'SHALL' occurrences; EARS-016 focuses on whether the response clause bundles multiple distinct actions."
+  },
+  "EARS-009": {
+    "rule_name": "subject_identification",
+    "category": "Keyword Usage",
+    "description": "Identify the responsible system, subsystem, or component explicitly as the subject of the SHALL clause, using a name consistent with the project architecture.",
+    "trigger_criteria": [
+      "Subject is missing, implied, or replaced by a pronoun ('it shall...')",
+      "Subject is more generic than the architecture warrants (e.g. 'THE VEHICLE SHALL' when only the 'BRAKE CONTROL MODULE' is responsible)"
+    ],
+    "example_violation": "WHEN the brake pedal is pressed, it shall apply the brake force.",
+    "example_compliant": "WHEN the brake pedal position exceeds [10%], THE BRAKE CONTROL MODULE SHALL apply the requested brake force within [50 ms].",
+    "disambiguation": "Distinct from EARS-007 (keyword selection): this rule concerns the subject/actor named after the keyword clause, not which keyword is chosen."
+  },
+  "EARS-010": {
+    "rule_name": "no_bare_statements",
+    "category": "Keyword Usage",
+    "description": "Every need or requirement statement must fit one of the five EARS patterns (Ubiquitous, Event-Driven, Unwanted Behavior, State-Driven, Optional Feature) or their Complex combination; avoid free-form statements outside these patterns.",
+    "trigger_criteria": [
+      "Statement is a fragment, note, or description that does not map to any EARS pattern",
+      "Statement contains a SHALL clause but no identifiable pattern keyword structure where one is warranted (e.g. a conditional buried in prose rather than expressed via WHEN/IF/WHILE/WHERE)"
+    ],
+    "example_violation": "Vehicle speed processing needs to happen fast, especially during braking.",
+    "example_compliant": "WHILE the brake pedal is applied, THE VEHICLE SPEED MODULE SHALL process the vehicle speed signal within [10 ms].",
+    "disambiguation": "This is the EARS-set counterpart to INCOSE-001 (structured_statements); use this rule specifically when the statement fails to map onto any of the five EARS patterns, not for generic template non-conformance."
+  },
+  "EARS-011": {
+    "rule_name": "trigger_precedes_response",
+    "category": "Trigger and Condition",
+    "description": "In event-driven requirements, place the 'WHEN <trigger>' clause before the 'THE <SYSTEM> SHALL <ACTION>' clause.",
+    "trigger_criteria": [
+      "The response (SHALL clause) is stated before the WHEN trigger clause",
+      "The WHEN clause is embedded mid-sentence after the SHALL action rather than leading the statement"
+    ],
+    "example_violation": "THE SYSTEM SHALL illuminate the low-fuel indicator when the fuel level drops below [10%].",
+    "example_compliant": "WHEN the fuel level drops below [10%], THE INSTRUMENT CLUSTER SHALL illuminate the low-fuel indicator within [1 s].",
+    "disambiguation": "Ordering-only check. If the trigger itself is a fault/abnormal condition, this rule still applies but the keyword should be 'IF...THEN' per EARS-003/EARS-007, not 'WHEN'."
+  },
+  "EARS-012": {
+    "rule_name": "condition_before_action",
+    "category": "Trigger and Condition",
+    "description": "In unwanted-behavior requirements, place the 'IF <trigger>' clause before the 'THEN THE <SYSTEM> SHALL <ACTION>' clause, with 'THEN' marking the start of the response.",
+    "trigger_criteria": [
+      "The 'IF' clause is present but 'THEN' is omitted before the SHALL clause",
+      "The action clause precedes the IF condition in the sentence"
+    ],
+    "example_violation": "THE SYSTEM SHALL set the over-voltage DTC if the battery voltage exceeds [16 V].",
+    "example_compliant": "IF the battery voltage exceeds [16 V], THEN THE BODY CONTROL MODULE SHALL set the over-voltage diagnostic trouble code within [200 ms].",
+    "disambiguation": "Distinct from EARS-011: this rule applies specifically to the IF...THEN unwanted-behavior pattern, including the requirement to keep the explicit 'THEN' marker, which EARS-011's WHEN pattern does not require."
+  },
+  "EARS-013": {
+    "rule_name": "single_trigger_per_requirement",
+    "category": "Trigger and Condition",
+    "description": "Express each requirement with a single trigger or condition clause; do not combine multiple independent WHEN/IF triggers into one statement.",
+    "trigger_criteria": [
+      "Two or more independent WHEN/IF trigger clauses are joined by 'and'/'or' or comma-separated within a single requirement, each warranting its own response"
+    ],
+    "example_violation": "WHEN the ignition is turned on and the driver door is opened, THE SYSTEM SHALL sound the seatbelt chime.",
+    "example_compliant": "WHEN the ignition is turned on, THE SYSTEM SHALL sound the seatbelt chime if the seatbelt is unbuckled, within [2 s]. (driver-door-open case stated as a separate requirement)",
+    "disambiguation": "Overlaps with INCOSE-011/INCOSE-028 style multi-condition issues; apply this EARS-specific version when the compound conditions are each independently sufficient to trigger the response, indicating they should be split into separate requirements."
+  },
+  "EARS-014": {
+    "rule_name": "state_qualifier_clarity",
+    "category": "Trigger and Condition",
+    "description": "The state named in a 'WHILE' clause must be an objectively verifiable, bounded operating state of the system, not a vague or continuously-varying condition.",
+    "trigger_criteria": [
+      "The WHILE clause names a state that cannot be objectively determined to be active/inactive (e.g. 'while driving normally', 'while conditions are safe')",
+      "The WHILE clause describes a momentary event rather than a persistent state"
+    ],
+    "example_violation": "WHILE driving safely, THE SYSTEM SHALL limit acceleration.",
+    "example_compliant": "WHILE the vehicle speed is within [0 kph, 30 kph] AND the parking assist feature is active, THE SYSTEM SHALL limit acceleration to [0.2 g].",
+    "disambiguation": "Complements EARS-004 (pattern structure); this rule inspects the quality/verifiability of the state clause itself once the WHILE pattern has been correctly applied."
+  },
+  "EARS-015": {
+    "rule_name": "optional_feature_explicit",
+    "category": "Trigger and Condition",
+    "description": "The 'WHERE' clause must name a specific, identifiable optional feature or configuration item, not a vague product tier or unstated option.",
+    "trigger_criteria": [
+      "The WHERE clause references a vague grouping (e.g. 'premium trim', 'higher-spec vehicles') instead of the specific named optional feature",
+      "The WHERE clause is used without any corresponding entry in the feature/configuration list"
+    ],
+    "example_violation": "WHERE the vehicle is a premium trim, THE SYSTEM SHALL enable adaptive headlamps.",
+    "example_compliant": "WHERE the Adaptive Headlamp feature is installed, THE LIGHTING CONTROL MODULE SHALL enable adaptive headlamp leveling.",
+    "disambiguation": "Complements EARS-005 (pattern structure); this rule inspects whether the named feature is specific and traceable to a configuration item, not just whether the WHERE keyword is used."
+  },
+  "EARS-016": {
+    "rule_name": "single_response_action",
+    "category": "Response Formulation",
+    "description": "Each requirement's SHALL clause should describe exactly one system response/action; list additional actions as separate requirements.",
+    "trigger_criteria": [
+      "The SHALL clause lists two or more distinct actions joined by 'and'/commas (e.g. 'detect the fault, set the DTC, and illuminate the lamp')"
+    ],
+    "example_violation": "IF the oxygen sensor signal is out of range, THEN THE SYSTEM SHALL set DTC_P0135 and illuminate the malfunction indicator lamp and log the freeze frame data.",
+    "example_compliant": "IF the oxygen sensor signal is out of range, THEN THE ENGINE CONTROL MODULE SHALL set DTC_P0135 within [500 ms]. (illumination and freeze-frame logging stated as separate requirements)",
+    "disambiguation": "This is the EARS-specific analogue of INCOSE-018 (single thought); apply specifically to the action list following SHALL, regardless of how the trigger/condition clause is formed."
+  },
+  "EARS-017": {
+    "rule_name": "response_measurability",
+    "category": "Response Formulation",
+    "description": "The system response in the SHALL clause should include an explicit, measurable performance criterion (timing, tolerance, accuracy) sufficient for verification.",
+    "trigger_criteria": [
+      "SHALL clause describes an action with no associated timing value, tolerance, or other measurable criterion where one is needed for verification"
+    ],
+    "example_violation": "WHEN the parking brake switch is engaged, THE SYSTEM SHALL illuminate the parking brake indicator.",
+    "example_compliant": "WHEN the parking brake switch is engaged, THE INSTRUMENT CLUSTER SHALL illuminate the parking brake indicator within [200 ms].",
+    "disambiguation": "Overlaps with INCOSE-034 (measurable_performance); apply the EARS-specific version when the missing criterion is attached directly to an EARS response clause following SHALL."
+  },
+  "EARS-018": {
+    "rule_name": "no_implementation_in_response",
+    "category": "Response Formulation",
+    "description": "The SHALL clause should describe the required behavior/outcome, not a specific implementation mechanism, unless a design constraint rationale is provided.",
+    "trigger_criteria": [
+      "SHALL clause specifies a particular algorithm, component part number, or internal mechanism instead of the required outcome, with no stated design-constraint rationale"
+    ],
+    "example_violation": "WHEN VehSpd exceeds [250 kph], THE SYSTEM SHALL execute the OverspeedHandler() function in the CAN gateway ECU.",
+    "example_compliant": "WHEN the vehicle speed exceeds [250 kph], THE SYSTEM SHALL transition to the over-speed safe state within [50 ms].",
+    "disambiguation": "This is the EARS-specific analogue of INCOSE-031 (solution_free); apply when the implementation detail appears specifically within the SHALL response clause."
+  },
+  "EARS-019": {
+    "rule_name": "hybrid_clause_ordering",
+    "category": "Combination and Ordering",
+    "description": "When combining clause types in a complex/hybrid EARS requirement, order them as: WHERE (feature), WHILE (state), WHEN/IF (trigger), THE <SYSTEM> SHALL <ACTION>.",
+    "trigger_criteria": [
+      "A hybrid requirement combines two or more clause types but in an order other than WHERE, WHILE, WHEN/IF, SHALL"
+    ],
+    "example_violation": "WHEN the driver presses the lane-keep button, WHERE the Lane Keep Assist feature is installed, THE SYSTEM SHALL activate lane centering.",
+    "example_compliant": "WHERE the Lane Keep Assist feature is installed, WHEN the driver presses the lane-keep button, THE SYSTEM SHALL activate lane centering within [500 ms].",
+    "disambiguation": "Applies only once EARS-006 (complex_hybrid_pattern) confirms a hybrid combination is appropriate; this rule checks the ordering of the already-identified clauses."
+  },
+  "EARS-020": {
+    "rule_name": "avoid_nested_conditions",
+    "category": "Combination and Ordering",
+    "description": "Avoid nesting conditional logic within a trigger or state clause (e.g. an 'IF' inside a 'WHEN' clause); split into separate, linked requirements instead.",
+    "trigger_criteria": [
+      "A trigger or state clause itself contains a further conditional sub-clause (nested IF/WHEN/WHILE) rather than being a single flat condition"
+    ],
+    "example_violation": "WHEN the brake pedal is pressed, if the ABS is also active, THE SYSTEM SHALL modulate brake pressure.",
+    "example_compliant": "WHILE the Anti-lock Braking System is active, WHEN the brake pedal is pressed, THE SYSTEM SHALL modulate brake pressure within [20 ms].",
+    "disambiguation": "Distinct from EARS-013 (single trigger): EARS-013 flags multiple independent triggers chained together; EARS-020 flags one condition embedded inside another, which should instead be flattened into a hybrid pattern (EARS-006/EARS-019) or split."
+  },
+  "EARS-021": {
+    "rule_name": "specific_unwanted_trigger",
+    "category": "Combination and Ordering",
+    "description": "In unwanted-behavior requirements, state the specific fault/error condition precisely rather than a vague catch-all trigger.",
+    "trigger_criteria": [
+      "The 'IF' clause uses a vague catch-all phrase for the fault condition (e.g. 'if something goes wrong', 'if an error occurs') without naming the specific fault"
+    ],
+    "example_violation": "IF something goes wrong with the speed sensor, THEN THE SYSTEM SHALL set a fault code.",
+    "example_compliant": "IF the vehicle speed sensor signal is absent for more than [100 ms], THEN THE SYSTEM SHALL set DTC_101_VSPD_LOSS within [50 ms].",
+    "disambiguation": "This is the EARS-specific analogue of INCOSE-007 (vague_terms) applied specifically to the IF-trigger clause of the unwanted-behavior pattern."
+  },
+  "EARS-022": {
+    "rule_name": "keyword_casing_consistency",
+    "category": "Verifiability",
+    "description": "Render EARS keywords (WHEN, IF, THEN, WHILE, WHERE, SHALL) in a consistent case/format (typically upper-case) throughout the requirement set to make patterns machine-parseable.",
+    "trigger_criteria": [
+      "EARS keywords appear in inconsistent case across the requirement set (e.g. 'when' in one requirement, 'WHEN' in another) for the same pattern usage"
+    ],
+    "example_violation": "when the ignition is on, the system shall enable the instrument cluster.",
+    "example_compliant": "WHEN the ignition is ON, THE SYSTEM SHALL enable the instrument cluster within [1 s].",
+    "disambiguation": "Cross-requirement/style consistency check, evaluated across the set rather than a single statement in isolation; analogous in spirit to INCOSE-036/037 but scoped to EARS keyword formatting specifically."
+  },
+  "EARS-023": {
+    "rule_name": "reserved_keyword_protection",
+    "category": "Verifiability",
+    "description": "Reserve EARS pattern keywords (WHEN, IF, WHILE, WHERE) for their pattern-defining role; avoid using them elsewhere in a requirement in a way that could be mistaken for a pattern clause.",
+    "trigger_criteria": [
+      "'when', 'if', 'while', or 'where' appears in the requirement body in an ordinary grammatical sense (e.g. relative/temporal usage) in addition to, or instead of, its EARS pattern role, creating ambiguity about which clause is the actual trigger/state"
+    ],
+    "example_violation": "WHEN the fault occurs, THE SYSTEM SHALL log the time when the fault was first detected.",
+    "example_compliant": "WHEN the fault occurs, THE SYSTEM SHALL log the fault detection timestamp.",
+    "disambiguation": "Focuses on avoiding a second, informal use of a reserved keyword within the same statement that could be confused with the formal EARS clause it introduces."
+  },
+  "EARS-024": {
+    "rule_name": "verifiable_state_detection",
+    "category": "Verifiability",
+    "description": "A state named in a WHILE clause (or feature named in a WHERE clause) must be detectable by the system itself, or by an explicitly identified external means, for the requirement to be verifiable.",
+    "trigger_criteria": [
+      "The WHILE/WHERE condition refers to a state or feature with no stated mechanism (signal, sensor, configuration flag) by which the system or verification process can determine it is true"
+    ],
+    "example_violation": "WHILE the road is wet, THE SYSTEM SHALL reduce the traction control threshold.",
+    "example_compliant": "WHILE the rain sensor indicates precipitation above [threshold], THE SYSTEM SHALL reduce the traction control threshold to [80%] of nominal.",
+    "disambiguation": "Complements EARS-014; EARS-014 checks that the state concept itself is boundable, while EARS-024 checks that a concrete detection mechanism exists to verify it in practice."
+  },
+  "EARS-025": {
+    "rule_name": "single_shall_per_pattern_instance",
+    "category": "Consistency",
+    "description": "Ensure each EARS pattern instance (Ubiquitous, Event-Driven, Unwanted Behavior, State-Driven, Optional Feature, or Complex) maps to exactly one requirement record with exactly one SHALL statement, consistently structured the same way across the requirement set.",
+    "trigger_criteria": [
+      "Multiple SHALL statements are recorded under a single requirement ID",
+      "Equivalent pattern types are structured differently across the requirement set (e.g. some event-driven requirements place WHEN first, others bury it mid-sentence)"
+    ],
+    "example_violation": "SYS_REQ_0021 contains: 'WHEN X, THE SYSTEM SHALL A. ALSO, THE SYSTEM SHALL B when Y.'",
+    "example_compliant": "SYS_REQ_0021: 'WHEN X, THE SYSTEM SHALL A within [50 ms].' SYS_REQ_0022: 'WHEN Y, THE SYSTEM SHALL B within [50 ms].'",
+    "disambiguation": "Cross-requirement structural consistency check, similar in spirit to INCOSE-042 (structured_sets) but focused specifically on one-SHALL-per-record discipline within the EARS pattern framework."
+  }
+}

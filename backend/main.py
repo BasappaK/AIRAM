@@ -22,14 +22,17 @@ from backend.database import (
     init_db,
     save_guidelines,
     get_all_guidelines,
+    update_guideline,
     delete_guideline,
     get_previous_executions,
     get_execution_results,
     update_execution_minimized,
     update_execution_status,
     get_chunking_metrics,
-    delete_execution_run
+    delete_execution_run,
+    get_execution_run
 )
+from pydantic import BaseModel
 from backend.rag_service import train_document_stream, search_guideline_chunks
 from backend.analyzer_service import run_requirements_analysis_job, ACTIVE_JOBS
 
@@ -77,6 +80,20 @@ async def upload_guidelines(
 async def get_guidelines():
     """Lists all available strict guideline documents."""
     return get_all_guidelines()
+
+class GuidelineUpdate(BaseModel):
+    name: str
+    content: str
+
+@app.put("/api/guidelines/{guideline_id}")
+async def edit_guideline(guideline_id: str, payload: GuidelineUpdate):
+    """Updates a strict guideline document."""
+    try:
+        parsed_json = json.loads(payload.content)
+        update_guideline(guideline_id, payload.name, parsed_json)
+        return {"status": "success", "id": guideline_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON content: {str(e)}")
 
 @app.delete("/api/guidelines/{guideline_id}")
 async def remove_guideline(guideline_id: str):
@@ -219,9 +236,14 @@ async def stop_analysis(run_id: str):
 
 @app.get("/api/analysis/{run_id}/status")
 async def get_analysis_status(run_id: str):
-    """Gets running/active progress details of a job."""
-    if run_id in ACTIVE_JOBS:
-        return ACTIVE_JOBS[run_id]
+    """Gets running/active progress details of a job from the database."""
+    run_details = get_execution_run(run_id)
+    if run_details:
+        return {
+            "status": run_details["status"],
+            "current_row": run_details["current_row"],
+            "total_rows": run_details["total_rows"]
+        }
     return {"status": "inactive"}
 
 @app.get("/api/analysis/{run_id}/results")
@@ -230,9 +252,9 @@ async def get_run_results(run_id: str):
     return get_execution_results(run_id)
 
 @app.get("/api/analysis/history")
-async def get_history(limit: int = 15):
+async def get_history(limit: int = 15, offset: int = 0):
     """Lists previous execution summaries, supporting the dashboard metrics and minimizations."""
-    return get_previous_executions(limit)
+    return get_previous_executions(limit, offset)
 
 @app.post("/api/analysis/{run_id}/minimize")
 async def minimize_run(run_id: str, minimized: bool = Form(...)):

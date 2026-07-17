@@ -19,11 +19,15 @@ from backend.database import (
     create_placeholder_result,
     update_execution_result_by_id,
     get_guideline_content,
-    get_guideline_details
+    get_guideline_details,
+    update_execution_progress,
+    get_execution_run,
+    get_execution_status
 )
 from backend.rag_service import rag_engine
+from Analysis.traceability_analyser import analyze_traceability_from_swe1_with_llm
 
-# Active execution state tracker
+# Active execution state tracker for single process fallback (still kept for backward compatibility, but DB is source of truth)
 ACTIVE_JOBS = {}  # run_id -> { "status": "running" | "paused" | "stopped", "current_row": int, "total_rows": int }
 
 def find_best_header(headers: list, target_list: list) -> str:
@@ -124,8 +128,36 @@ def read_xlsx_file(file_content: bytes) -> list:
                         text_parts = [r.find('ns:t', ns).text for r in si.findall('ns:r', ns) if r.find('ns:t', ns) is not None]
                         shared_strings.append("".join(text_parts))
 
-            # 2. Parse sheet1
-            sheet_content = zip_ref.read('xl/worksheets/sheet1.xml')
+            # 2. Parse sheet target from workbook.xml and workbook.xml.rels
+            sheet_target = 'worksheets/sheet1.xml' # default fallback
+            namelist = zip_ref.namelist()
+            if 'xl/workbook.xml' in namelist and 'xl/_rels/workbook.xml.rels' in namelist:
+                try:
+                    wb_content = zip_ref.read('xl/workbook.xml')
+                    wb_root = ET.fromstring(wb_content)
+                    ns_wb = {'ns': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                    sheets_el = wb_root.find('ns:sheets', ns_wb)
+                    if sheets_el is not None:
+                        sheet_el = sheets_el.find('ns:sheet', ns_wb)
+                        if sheet_el is not None:
+                            # Use relationship ID to find target filename
+                            r_id = sheet_el.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                            if r_id:
+                                rels_content = zip_ref.read('xl/_rels/workbook.xml.rels')
+                                rels_root = ET.fromstring(rels_content)
+                                ns_rels = {'ns': 'http://schemas.openxmlformats.org/package/2006/relationships'}
+                                for rel in rels_root.findall('ns:Relationship', ns_rels):
+                                    if rel.get('Id') == r_id:
+                                        sheet_target = rel.get('Target')
+                                        break
+                except Exception as e:
+                    print(f"Error parsing workbook sheets, falling back to worksheets/sheet1.xml: {e}")
+
+            sheet_path = 'xl/' + sheet_target
+            if sheet_path not in namelist:
+                sheet_path = 'xl/worksheets/sheet1.xml'
+
+            sheet_content = zip_ref.read(sheet_path)
             root = ET.fromstring(sheet_content)
             ns = {'ns': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
             
@@ -209,8 +241,12 @@ def read_xlsx_file(file_content: bytes) -> list:
                     if "text" in normalized_row:
                         rows.append(normalized_row)
     finally:
-        os.remove(tmp_path)
-        
+        try:
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+            
     return rows
 
 def parse_requirements_file(file_content: bytes, filename: str) -> list:
@@ -220,52 +256,28 @@ def parse_requirements_file(file_content: bytes, filename: str) -> list:
         return read_xlsx_file(file_content)
     return []
 
-def evaluate_traceability_heuristics(req_text: str, swe1_reqs: list) -> dict:
-    """Fallback local analyzer for requirement traceability based on keyword match heuristics."""
-    matched_id = None
-    for hlr in swe1_reqs:
-        hlr_words = set(hlr.content.lower().split())
-        llr_words = set(req_text.lower().split())
-        common = hlr_words.intersection(llr_words)
-        if len(common) > 2: # heuristic keyword overlap
-            matched_id = hlr.name
-            break
-    
-    if matched_id:
-        return {
-            "status": "PASS",
-            "swe1_id": matched_id,
-            "rationale": f"Traces successfully to High Level Requirement {matched_id} due to keyword match.",
-            "corrected_req": req_text
-        }
-    else:
-        return {
-            "status": "FAIL",
-            "swe1_id": None,
-            "rationale": "No tracing high-level requirement (SWE.1) found matching this detailed low-level requirement (SWE.2).",
-            "corrected_req": req_text + " [Traced to: HLR-XXX]"
-        }
 
-def analyze_traceability_with_llm(r: Requirement, swe1_reqs: list, llm: LLMManager) -> dict:
-    """Calls Nvidia NIM API to analyze requirements traceability between SWE.1 and SWE.2."""
-    if not llm.client.api_key:
-        return evaluate_traceability_heuristics(r.content, swe1_reqs)
-        
-    hlr_list_str = "\n".join([f"- {hlr.name}: {hlr.content}" for hlr in swe1_reqs[:50]]) # Limit to prevent context blowup
+def analyze_traceability_from_swe1_with_llm(r_swe1: Requirement, swe2_reqs: list, llm: LLMManager) -> dict:
+    """Calls Nvidia NIM API to analyze which SWE.2 requirements trace to a given SWE.1 requirement."""
+    # Build list of SWE.2 requirements for prompt context
+    srs_list_str = "\n".join([f"- {srs.name}: {srs.content}" for srs in swe2_reqs[:100]]) # Limit to prevent context blowup
+    
     system_prompt = (
-        "You are an automotive safety and systems engineer. Evaluate if the following Low-Level Software Requirement (SWE.2) "
-        "properly traces to and satisfies one of the High-Level Requirements (SWE.1) listed below. "
+        "You are an automotive safety and systems engineer. Evaluate which of the following Low-Level Software Requirements (SWE.2) "
+        "properly trace to and satisfy the High-Level Requirement (SWE.1) listed below. "
         "Respond ONLY in a structured JSON format containing the following fields:\n"
         "{\n"
         '  "status": "PASS" | "FAIL" | "REVIEW",\n'
-        '  "swe1_id": "The matching SWE.1 ID (e.g. REQ-1) or null if none match",\n'
-        '  "rationale": "Reason why it traces or does not trace",\n'
-        '  "corrected_req": "Proposed rewrite of SWE.2 if trace correction is needed, or the original req if fine"\n'
+        '  "linked_swe2_ids": ["SWE2_0001", "SWE2_0002", ...] or [],\n'
+        '  "rationale": "Reason why they trace or do not trace"\n'
         "}"
     )
-    user_content = f"SWE.1 Requirements:\n{hlr_list_str}\n\nSWE.2 Requirement:\n{r.content}"
+    user_content = f"SWE.2 Requirements available:\n{srs_list_str}\n\nSWE.1 Requirement to match:\nID: {r_swe1.name}\nContent: {r_swe1.content}"
     
     try:
+        if not llm or not llm.client.api_key or llm.client.api_key == "mock-key":
+            return {"status": "FAIL", "linked_swe2_ids": [], "rationale": "No LLM API key configured for semantic search."}
+            
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
@@ -273,17 +285,24 @@ def analyze_traceability_with_llm(r: Requirement, swe1_reqs: list, llm: LLMManag
         response = llm.get_response(messages, stream=False, model=getattr(llm, "analysis_model_name", "nvidia/llama-3.3-nemotron-super-49b-v1.5"))
         from Analysis.quality_analyser import clean_and_parse_json
         res_data = clean_and_parse_json(response.choices[0].message.content)
-        # Normalize status to uppercase matching DB constraint
+        
         status_raw = res_data.get("status", "REVIEW").upper()
+        linked_ids = res_data.get("linked_swe2_ids", [])
+        if not isinstance(linked_ids, list):
+            linked_ids = [linked_ids] if linked_ids else []
+            
         return {
-            "status": "PASS" if status_raw in ["PASS", "PASSED"] else ("REVIEW" if status_raw == "REVIEW" else "FAIL"),
-            "swe1_id": res_data.get("swe1_id"),
-            "rationale": res_data.get("rationale", "No rationale provided by LLM."),
-            "corrected_req": res_data.get("corrected_req", r.content)
+            "status": "PASS" if status_raw in ["PASS", "PASSED"] and len(linked_ids) > 0 else ("REVIEW" if status_raw == "REVIEW" else "FAIL"),
+            "linked_swe2_ids": linked_ids,
+            "rationale": res_data.get("rationale", "No rationale provided by LLM.")
         }
     except Exception as e:
         print(f"Nvidia NIM API traceability call failed: {e}")
-        return evaluate_traceability_heuristics(r.content, swe1_reqs)
+        return {
+            "status": "FAIL",
+            "linked_swe2_ids": [],
+            "rationale": f"LLM analysis failed: {str(e)}"
+        }
 
 def analyze_quality(
     idx: int,
@@ -362,137 +381,246 @@ async def run_requirements_analysis_job(
     custom_context_correction: str = None
 ):
     """Executes the analysis process row-by-row supporting Pause, Resume, Stop operations."""
-    save_execution_run(run_id, run_type, "running")
-    ACTIVE_JOBS[run_id] = {
-        "status": "running",
-        "current_row": 0,
-        "total_rows": 0
-    }
-    
-    # Initialize LLMManager using passed model
-    llm_manager = LLMManager(model_name=model_name, analysis_model_name=model_name)
-    
-    # 1. Parse requirement sets
-    swe1_reqs_raw = parse_requirements_file(swe1_content, swe1_filename) if swe1_content else []
-    swe2_reqs_raw = parse_requirements_file(swe2_content, swe2_filename) if swe2_content else []
-    
-    # Convert lists to Requirement objects compatible with POC analyzer
-    swe1_reqs = []
-    for idx, item in enumerate(swe1_reqs_raw):
-        swe1_reqs.append(Requirement(
-            name=item.get("id", f"REQ-{idx+1}"),
-            content=item.get("text", ""),
-            state=item.get("state", item.get("State", "")),
-            asil=item.get("asil", item.get("ASIL", "")),
-            rationale=item.get("rationale", item.get("Rationale", ""))
-        ))
+    print(f"[TRACE] Job {run_id} starting. type={run_type}", flush=True)
+    try:
+        guideline_name = None
+        if guideline_id:
+            from backend.database import get_guideline_details
+            g_details = get_guideline_details(guideline_id)
+            if g_details:
+                guideline_name = g_details["name"]
+                
+        save_execution_run(run_id, run_type, "running", guideline_name=guideline_name)
+        ACTIVE_JOBS[run_id] = {
+            "status": "running",
+            "current_row": 0,
+            "total_rows": 0
+        }
         
-    swe2_reqs = []
-    for idx, item in enumerate(swe2_reqs_raw):
-        swe2_reqs.append(Requirement(
-            name=item.get("id", f"REQ-{idx+1}"),
-            content=item.get("text", ""),
-            state=item.get("state", item.get("State", "")),
-            asil=item.get("asil", item.get("ASIL", "")),
-            rationale=item.get("rationale", item.get("Rationale", ""))
-        ))
-    
-    # Determine what we are analyzing
-    analysis_items = []
-    mode = "quality"
-    
-    if run_type == "traceability":
-        analysis_items = swe2_reqs
-        mode = "traceability"
-    else:
-        # For quality or combined analysis, process all requirements
-        analysis_items = swe1_reqs + swe2_reqs
+        # Initialize LLMManager using passed model
+        llm_manager = LLMManager(model_name=model_name, analysis_model_name=model_name)
+        print(f"[TRACE] LLM initialized. API key present: {llm_manager.client.api_key != 'mock-key'}", flush=True)
+        
+        # 1. Parse requirement sets
+        swe1_reqs_raw = parse_requirements_file(swe1_content, swe1_filename) if swe1_content else []
+        swe2_reqs_raw = parse_requirements_file(swe2_content, swe2_filename) if swe2_content else []
+        print(f"[TRACE] Parsed SWE1: {len(swe1_reqs_raw)} rows, SWE2: {len(swe2_reqs_raw)} rows", flush=True)
+        
+        # Debug: print first parsed row keys to verify header mapping
+        if swe1_reqs_raw:
+            print(f"[TRACE] SWE1 first row keys: {list(swe1_reqs_raw[0].keys())}", flush=True)
+            print(f"[TRACE] SWE1 first row id: {swe1_reqs_raw[0].get('id', 'MISSING')}", flush=True)
+        if swe2_reqs_raw:
+            print(f"[TRACE] SWE2 first row keys: {list(swe2_reqs_raw[0].keys())}", flush=True)
+            print(f"[TRACE] SWE2 first row covers value: {swe2_reqs_raw[0].get('covers', swe2_reqs_raw[0].get('Covers', swe2_reqs_raw[0].get('Mapped_SWE1_ID', 'MISSING')))}", flush=True)
+        
+        # Convert lists to Requirement objects compatible with POC analyzer
+        swe1_reqs = []
+        for idx, item in enumerate(swe1_reqs_raw):
+            swe1_reqs.append(Requirement(
+                name=item.get("id", f"REQ-{idx+1}"),
+                content=item.get("text", ""),
+                state=item.get("state", item.get("State", "")),
+                asil=item.get("asil", item.get("ASIL", "")),
+                rationale=item.get("rationale", item.get("Rationale", "")),
+                covers=item.get("covers", item.get("Mapped_SWE1_ID", item.get("mapped_swe1_id", "")))
+            ))
+            swe1_reqs[-1].category = "sys1"
+            
+        swe2_reqs = []
+        for idx, item in enumerate(swe2_reqs_raw):
+            swe2_reqs.append(Requirement(
+                name=item.get("id", f"REQ-{idx+1}"),
+                content=item.get("text", ""),
+                state=item.get("state", item.get("State", "")),
+                asil=item.get("asil", item.get("ASIL", "")),
+                rationale=item.get("rationale", item.get("Rationale", "")),
+                covers=item.get("covers", item.get("Covers", item.get("Mapped_SWE1_ID", item.get("mapped_swe1_id", ""))))
+            ))
+            swe2_reqs[-1].category = "sys2"
+        
+        print(f"[TRACE] Built {len(swe1_reqs)} SWE1 Requirement objects, {len(swe2_reqs)} SWE2 Requirement objects", flush=True)
+        if swe2_reqs:
+            print(f"[TRACE] SWE2[0] name={swe2_reqs[0].name}, covers='{swe2_reqs[0].covers}'", flush=True)
+        
+        # Determine what we are analyzing
+        analysis_items = []
         mode = "quality"
         
-    total_rows = len(analysis_items)
-    ACTIVE_JOBS[run_id]["total_rows"] = total_rows
-    
-    # 2. Inject strict guidelines content globally if strict guidelines mode is chosen
-    is_strict_json = (guideline_id is not None and guideline_id.strip() != "" and not use_rag)
-    if is_strict_json:
-        try:
-            ids = [i.strip() for i in guideline_id.split(",") if i.strip()]
-            combined_rules = {}
-            for gid in ids:
-                g_details = get_guideline_details(gid)
-                if g_details:
-                    combined_rules[g_details["name"]] = g_details["content"]
-            qa_mod.CURRENT_RULES = combined_rules
-        except Exception as e:
-            print(f"Failed to load strict guidelines {guideline_id}: {e}")
-            qa_mod.CURRENT_RULES = None
-    else:
-        qa_mod.CURRENT_RULES = None
-        
-    # Loop and analyze row-by-row
-    for idx, r in enumerate(analysis_items):
-        # Handle Pause/Stop operations
-        while True:
-            job_state = ACTIVE_JOBS.get(run_id)
-            if not job_state or job_state["status"] == "stopped":
-                update_execution_status(run_id, "stopped")
-                qa_mod.CURRENT_RULES = None
-                return
-            if job_state["status"] == "paused":
-                await asyncio.sleep(0.5)
-                continue
-            break
-            
-        ACTIVE_JOBS[run_id]["current_row"] = idx + 1
-        
-        req_id = r.name
-        req_text = r.content
-        
-        # Immediately insert placeholder row so the UI table knows we are waiting for the LLM
-        row_id = create_placeholder_result(run_id, req_id, req_text)
-        
-        # Update progress bar state
-        ACTIVE_JOBS[run_id]["current_row"] = idx + 1
-        
-        # Resolve rules context: fetch from RAG similarity search if enabled
-        rules_context = ""
-        if use_rag and req_text:
-            try:
-                # Query RAGEngine
-                rules_context = rag_engine.query(req_text, collection_name="airam_guidelines", top_k=2)
-            except Exception as e:
-                print(f"RAG rules search failed: {e}")
-                
-        # Analyze using LLM or local fallbacks based on mode
-        if mode == "traceability":
-            # Call traceability analyzer
-            result = await asyncio.to_thread(analyze_traceability_with_llm, r, swe1_reqs, llm_manager)
-            if not correct_trace:
-                result["corrected_req"] = None
+        if run_type == "traceability":
+            analysis_items = swe1_reqs
+            mode = "traceability"
         else:
-            # Call quality auditor
-            result = await asyncio.to_thread(analyze_quality, idx, r, llm_manager, rag_engine, rules_context, is_strict_json, correct_quality, custom_context, custom_context_correction)
+            # For quality or combined analysis, process all requirements
+            analysis_items = swe1_reqs + swe2_reqs
+            mode = "quality"
             
-        # Update the placeholder row with the final results
-        status = result.get("status", "REVIEW").upper()
-        failed_rule = result.get("failed_rule")
-        rationale = result.get("rationale", "No explanation provided.")
-        corrected_req = result.get("corrected_req", req_text)
-        swe1_id = result.get("swe1_id")
+        total_rows = len(analysis_items)
+        print(f"[TRACE] Mode={mode}, total_rows={total_rows}", flush=True)
         
-        update_execution_result_by_id(
-            row_id=row_id,
-            status=status,
-            failed_rule=failed_rule or swe1_id,
-            rationale=rationale,
-            corrected_req=corrected_req,
-            swe1_id=swe1_id
-        )
+        if run_id in ACTIVE_JOBS:
+            ACTIVE_JOBS[run_id]["total_rows"] = total_rows
+        update_execution_progress(run_id, current_row=0, total_rows=total_rows, status="running")
         
-        # Yield execution control to remain responsive
-        await asyncio.sleep(0.01)
-        
-    update_execution_status(run_id, "completed")
-    ACTIVE_JOBS[run_id]["status"] = "completed"
-    # Reset rules state
-    qa_mod.CURRENT_RULES = None
+        # 2. Inject strict guidelines content globally if strict guidelines mode is chosen
+        is_strict_json = (guideline_id is not None and guideline_id.strip() != "" and not use_rag)
+        if is_strict_json:
+            try:
+                ids = [i.strip() for i in guideline_id.split(",") if i.strip()]
+                combined_rules = {}
+                for gid in ids:
+                    g_details = get_guideline_details(gid)
+                    if g_details:
+                        combined_rules[g_details["name"]] = g_details["content"]
+                qa_mod.CURRENT_RULES = combined_rules
+            except Exception as e:
+                print(f"Failed to load strict guidelines {guideline_id}: {e}")
+                qa_mod.CURRENT_RULES = None
+        else:
+            qa_mod.CURRENT_RULES = None
+            
+        # Loop and analyze row-by-row
+        covered_swe2_ids = set()
+        for idx, r in enumerate(analysis_items):
+            print(f"[TRACE] Processing row {idx+1}/{total_rows}: {r.name}", flush=True)
+            
+            # Handle Pause/Stop operations
+            while True:
+                status_db = get_execution_status(run_id) or "stopped"
+                if run_id in ACTIVE_JOBS:
+                    ACTIVE_JOBS[run_id]["status"] = status_db
+                
+                if status_db == "stopped":
+                    update_execution_status(run_id, "stopped")
+                    qa_mod.CURRENT_RULES = None
+                    print(f"[TRACE] Job {run_id} stopped by user at row {idx+1}", flush=True)
+                    return
+                if status_db == "paused":
+                    await asyncio.sleep(0.5)
+                    continue
+                break
+                
+            if run_id in ACTIVE_JOBS:
+                ACTIVE_JOBS[run_id]["current_row"] = idx + 1
+            update_execution_progress(run_id, current_row=idx + 1, total_rows=total_rows)
+            
+            # Determine initial placeholder keys
+            if mode == "traceability":
+                row_id = create_placeholder_result(run_id, None, None, category="traceability")
+                update_execution_result_by_id(
+                    row_id=row_id,
+                    status="PROCESSING",
+                    failed_rule=None,
+                    rationale=f"Analyzing trace for {r.name}... waiting for LLM/deterministic response",
+                    corrected_req=None,
+                    swe1_id=r.name,
+                    swe1_text=r.content,
+                    category="traceability"
+                )
+            else:
+                row_id = create_placeholder_result(run_id, r.name, r.content, category=getattr(r, "category", None))
+                
+            # Update progress bar state
+            if run_id in ACTIVE_JOBS:
+                ACTIVE_JOBS[run_id]["current_row"] = idx + 1
+            update_execution_progress(run_id, current_row=idx + 1, total_rows=total_rows)
+            
+            # Resolve rules context: fetch from RAG similarity search if enabled
+            rules_context = ""
+            if use_rag and r.content:
+                try:
+                    # Query RAGEngine
+                    rules_context = rag_engine.query(r.content, collection_name="airam_guidelines", top_k=2)
+                except Exception as e:
+                    print(f"RAG rules search failed: {e}")
+                    
+            # Analyze using LLM or local fallbacks based on mode
+            if mode == "traceability":
+                print(f"[TRACE]   Using LLM for {r.name}...", flush=True)
+                result = await asyncio.to_thread(analyze_traceability_from_swe1_with_llm, r, swe2_reqs, llm_manager)
+                print(f"[TRACE]   LLM returned: status={result.get('status')}, linked_ids={result.get('linked_swe2_ids', [])}", flush=True)
+                status = result.get("status", "FAIL")
+                rationale = result.get("rationale", "No explanation provided.")
+                linked_ids = result.get("linked_swe2_ids", [])
+                linked_swe2s = [s2 for s2 in swe2_reqs if s2.name in linked_ids]
+                
+                # Format outputs
+                swe2_ids_str = ", ".join([s2.name for s2 in linked_swe2s]) if linked_swe2s else None
+                swe2_texts_str = "\n".join([f"• {s2.name}: {s2.content}" for s2 in linked_swe2s]) if linked_swe2s else None
+                
+                # Track covered
+                for s2 in linked_swe2s:
+                    covered_swe2_ids.add(s2.name)
+                    
+                update_execution_result_by_id(
+                    row_id=row_id,
+                    status=status,
+                    failed_rule=None,
+                    rationale=rationale,
+                    corrected_req=None,
+                    swe1_id=r.name,
+                    swe1_text=r.content,
+                    req_id=swe2_ids_str,
+                    input_req=swe2_texts_str
+                )
+            else:
+                # Call quality auditor
+                result = await asyncio.to_thread(analyze_quality, idx, r, llm_manager, rag_engine, rules_context, is_strict_json, correct_quality, custom_context, custom_context_correction)
+                status = result.get("status", "REVIEW").upper()
+                failed_rule = result.get("failed_rule")
+                rationale = result.get("rationale", "No explanation provided.")
+                corrected_req = result.get("corrected_req", r.content)
+                
+                update_execution_result_by_id(
+                    row_id=row_id,
+                    status=status,
+                    failed_rule=failed_rule,
+                    rationale=rationale,
+                    corrected_req=corrected_req,
+                    swe1_id=None,
+                    swe1_text=None
+                )
+                
+            print(f"[TRACE]   Row {idx+1} done: status={status}", flush=True)
+            # Yield execution control to remain responsive
+            await asyncio.sleep(0.01)
+            
+        if mode == "traceability":
+            # Process orphaned SWE.2 requirements
+            orphan_count = 0
+            for s2 in swe2_reqs:
+                if s2.name not in covered_swe2_ids:
+                    orphan_count += 1
+                    row_id = create_placeholder_result(run_id, s2.name, s2.content, category="traceability")
+                    update_execution_result_by_id(
+                        row_id=row_id,
+                        status="FAIL",
+                        failed_rule="Orphan LLD",
+                        rationale="Orphaned LLD: No linked SWE.1 requirement found.",
+                        corrected_req=None,
+                        swe1_id=None,
+                        swe1_text=None,
+                        category="traceability"
+                    )
+            print(f"[TRACE] Orphaned SWE.2 requirements: {orphan_count}", flush=True)
+                    
+        update_execution_progress(run_id, current_row=total_rows, total_rows=total_rows, status="completed")
+        if run_id in ACTIVE_JOBS:
+            ACTIVE_JOBS[run_id]["status"] = "completed"
+            ACTIVE_JOBS[run_id]["current_row"] = total_rows
+        # Reset rules state
+        qa_mod.CURRENT_RULES = None
+        print(f"[TRACE] Job {run_id} COMPLETED successfully.", flush=True)
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Job {run_id} CRASHED: {e}", flush=True)
+        traceback.print_exc()
+        # Mark the job as stopped in DB so frontend stops polling
+        try:
+            update_execution_progress(run_id, current_row=0, total_rows=0, status="stopped")
+        except Exception:
+            pass
+        if run_id in ACTIVE_JOBS:
+            ACTIVE_JOBS[run_id]["status"] = "stopped"
+        qa_mod.CURRENT_RULES = None
+

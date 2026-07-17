@@ -48,7 +48,7 @@ class Requirement:
             state_key = find_header(["state", "status"], "State")
             asil_key = find_header(["asil", "severity"], "ASIL")
             rationale_key = find_header(["rationale", "reason", "description"], "Rationale")
-            covers_key = find_header(["covers"], "Covers(int)")
+            covers_key = find_header(["covers", "mapped_swe1_id"], "Covers(int)")
             refined_key = find_header(["refined"], "Refined(int)")
 
             for row in reader:
